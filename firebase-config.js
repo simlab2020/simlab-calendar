@@ -6,7 +6,7 @@
 // -> your web app -> the firebaseConfig block.
 
 export const firebaseConfig = {
- apiKey: "AIzaSyBqld177J-28A-ZSk1LPvaKvxG0UL1DBks",
+  apiKey: "AIzaSyBqld177J-28A-ZSk1LPvaKvxG0UL1DBks",
   authDomain: "simlab-calendar-26bed.firebaseapp.com",
   projectId: "simlab-calendar-26bed",
   storageBucket: "simlab-calendar-26bed.firebasestorage.app",
@@ -44,6 +44,7 @@ export const DEFAULT_SETTINGS = {
   showWeekend: true,
   showComments: true,
   showClock: true,
+  offlineGraceMin: 5,
   colors: COLORS,
   theme: {
     bg:      "#0d1b2a",
