@@ -1,1 +1,41 @@
-
+<!doctype html>
+<meta charset="utf-8">
+<title>Seed rooms (run once)</title>
+<button id="go">Seed rooms</button>
+<pre id="out"></pre>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword }
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, setDoc }
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+const out = document.getElementById("out");
+// id, label, group, order
+const ROOMS = [
+["103","103","Sim rooms",1], ["104","104","Sim rooms",2],
+["105","105","Sim rooms",3], ["109","109","Sim rooms",4],
+["111","111","Sim rooms",5], ["120","120","Sim rooms",6],
+["126a","126 A","Sim rooms",7],["126b","126 B","Sim rooms",8],
+["127","127","Sim rooms",9],
+["ctrl","Ctrl Rm","Control",10],
+["tl6","TL 6","TL rooms",11], ["tl7","TL 7","TL rooms",12],
+["tl8","TL 8","TL rooms",13], ["tl10","TL 10","TL rooms",14],
+["sp12","SP 12","SP rooms",15],["sp13","SP 13","SP rooms",16],
+["sp15","SP 15","SP rooms",17],["sp16","SP 16","SP rooms",18]
+];
+document.getElementById("go").onclick = async () => {
+const email = prompt("Staff email:");
+const pass = prompt("Password:");
+await signInWithEmailAndPassword(auth, email, pass);
+for (const [id, label, group, order] of ROOMS) {
+await setDoc(doc(db, "rooms", id),
+{ label, group, order, active: true, capacity: 16 });
+out.textContent += "wrote " + label + "\n";
+}
+out.textContent += "Done. Close this page.";
+};
+</script>
