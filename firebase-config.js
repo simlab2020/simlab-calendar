@@ -6,12 +6,12 @@
 // -> your web app -> the firebaseConfig block.
 
 export const firebaseConfig = {
-  apiKey: "PASTE_YOURS",
+ apiKey: "AIzaSyBqld177J-28A-ZSk1LPvaKvxG0UL1DBks",
   authDomain: "simlab-calendar-26bed.firebaseapp.com",
   projectId: "simlab-calendar-26bed",
-  storageBucket: "simlab-calendar-26bed.appspot.com",
-  messagingSenderId: "PASTE_YOURS",
-  appId: "PASTE_YOURS"
+  storageBucket: "simlab-calendar-26bed.firebasestorage.app",
+  messagingSenderId: "430530652619",
+  appId: "1:430530652619:web:53d1b1fe22a11acb05ee4e"
 };
 
 // ---------------------------------------------------------------
