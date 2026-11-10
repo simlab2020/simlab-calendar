@@ -5,200 +5,230 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sim Lab Calendar - Staff Edit</title>
 <style>
-body { font-family:"Segoe UI",system-ui,sans-serif; margin:0; padding:16px;
-background:#f4f6f8; color:#102a43; }
-h1 { font-size:20px; margin:0 0 12px; }
-button { padding:8px 14px; border:0; border-radius:5px; background:#1f3864;
-color:#fff; font-weight:600; cursor:pointer; }
-button.ghost { background:#fff; color:#1f3864; border:1px solid #1f3864; }
-table { border-collapse:collapse; width:100%; background:#fff; margin-top:12px; }
-th,td { border:1px solid #c7d4e3; padding:4px; font-size:12px; text-align:center;
-min-width:58px; cursor:pointer; vertical-align:top; }
-th { background:#1f3864; color:#fff; cursor:default; }
-td.day { background:#eaf1f8; font-weight:700; cursor:default; }
-.chip { display:block; border-radius:3px; padding:2px; margin:1px 0;
-color:#fff; font-weight:600; }
-#bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-dialog { border:0; border-radius:8px; padding:18px; min-width:300px; }
-dialog label { display:block; margin:8px 0 2px; font-size:12px; font-weight:600; }
-dialog input, dialog select { width:100%; padding:7px; border:1px solid #c7d4e3;
-border-radius:4px; }
-#login { max-width:320px; margin:60px auto; background:#fff; padding:24px;
-border-radius:8px; }
+  body { font-family:"Segoe UI",system-ui,sans-serif; margin:0; padding:16px;
+         background:#f4f6f8; color:#102a43; }
+  h1 { font-size:20px; margin:0 0 12px; }
+  button { padding:8px 14px; border:0; border-radius:5px; background:#1f3864;
+           color:#fff; font-weight:600; cursor:pointer; }
+  button.ghost { background:#fff; color:#1f3864; border:1px solid #1f3864; }
+  table { border-collapse:collapse; width:100%; background:#fff; margin-top:12px; }
+  th,td { border:1px solid #c7d4e3; padding:4px; font-size:12px; text-align:center;
+          min-width:58px; cursor:pointer; vertical-align:top; }
+  th { background:#1f3864; color:#fff; cursor:default; }
+  td.day { background:#eaf1f8; font-weight:700; cursor:default; }
+  .chip { display:block; border-radius:3px; padding:2px; margin:1px 0;
+          color:#fff; font-weight:600; }
+  #bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  dialog { border:0; border-radius:8px; padding:18px; min-width:300px; }
+  dialog label { display:block; margin:8px 0 2px; font-size:12px; font-weight:600; }
+  dialog input, dialog select { width:100%; padding:7px; border:1px solid #c7d4e3;
+                                border-radius:4px; }
+  #login { max-width:320px; margin:60px auto; background:#fff; padding:24px;
+           border-radius:8px; }
 </style>
 </head>
 <body>
+
 <div id="login">
-<h1>Sim Lab Calendar</h1>
-<label>Email</label><input id="email" type="email">
-<label>Password</label><input id="pass" type="password">
-<p><button id="signin">Sign in</button></p>
-<p id="err" style="color:#c0392b"></p>
+  <h1>Sim Lab Calendar</h1>
+  <label>Email</label><input id="email" type="email">
+  <label>Password</label><input id="pass" type="password">
+  <p><button id="signin">Sign in</button></p>
+  <p id="err" style="color:#c0392b"></p>
 </div>
+
 <div id="app" style="display:none">
-<h1>Sim Lab Calendar - Staff Edit</h1>
-<div id="bar">
-<button class="ghost" id="prev">&lt; Previous week</button>
-<b id="wkLabel"></b>
-<button class="ghost" id="next">Next week &gt;</button>
-<button id="copy">Copy previous week into this week</button>
-<button class="ghost" id="note">Edit day notes</button>
-<button class="ghost" id="out">Sign out</button>
+  <h1>Sim Lab Calendar - Staff Edit</h1>
+  <div id="bar">
+    <button class="ghost" id="prev">&lt; Previous week</button>
+    <b id="wkLabel"></b>
+    <button class="ghost" id="next">Next week &gt;</button>
+    <button id="copy">Copy previous week into this week</button>
+    <button class="ghost" id="note">Edit day notes</button>
+    <button class="ghost" id="out">Sign out</button>
+  </div>
+  <table id="grid"></table>
 </div>
-<table id="grid"></table>
-</div>
+
 <dialog id="dlg">
-<h3 id="dlgTitle"></h3>
-<label>Course / group</label><input id="f_course">
-<label>Block</label><input id="f_block" placeholder="AM, PM, 13:00-16:00">
-<label>Instructor</label><input id="f_inst">
-<label>Group size</label><input id="f_group" type="number" min="0">
-<label>Contact</label><input id="f_contact">
-<label>Setup notes (shown in the popup)</label><input id="f_setup">
-<label>Color</label>
-<select id="f_color">
-<option>teal</option><option>blue</option><option>orange</option>
-<option>pink</option><option>red</option><option>green</option><option>grey</option>
-</select>
-<label>Status</label>
-<select id="f_status"><option>confirmed</option><option>tentative</option></select>
-<p>
-<button id="save">Save</button>
-<button class="ghost" id="del">Delete</button>
-<button class="ghost" id="cancel">Cancel</button>
-</p>
+  <h3 id="dlgTitle"></h3>
+  <label>Course / group</label><input id="f_course">
+  <label>Block</label><input id="f_block" placeholder="AM, PM, 13:00-16:00">
+  <label>Instructor</label><input id="f_inst">
+  <label>Group size</label><input id="f_group" type="number" min="0">
+  <label>Contact</label><input id="f_contact">
+  <label>Setup notes (shown in the popup)</label><input id="f_setup">
+  <label>Color</label>
+  <select id="f_color">
+    <option>teal</option><option>blue</option><option>orange</option>
+    <option>pink</option><option>red</option><option>green</option><option>grey</option>
+  </select>
+  <label>Status</label>
+  <select id="f_status"><option>confirmed</option><option>tentative</option></select>
+  <p>
+    <button id="save">Save</button>
+    <button class="ghost" id="del">Delete</button>
+    <button class="ghost" id="cancel">Cancel</button>
+  </p>
 </dialog>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
-from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, query, where, orderBy, getDocs,
-addDoc, updateDoc, deleteDoc, setDoc, doc, serverTimestamp }
-from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { firebaseConfig, COLORS } from "./firebase-config.js";
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, query, where, orderBy, getDocs, getDoc,
+         addDoc, updateDoc, deleteDoc, setDoc, doc, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { firebaseConfig, COLORS, DEFAULT_SETTINGS } from "./firebase-config.js";
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app), auth = getAuth(app);
 const DAYS = ["Mon","Tues","Wed","Thurs","Fri","Sat","Sun"];
 let rooms = [], bookings = [], notes = {}, weekStart, editing = null;
+let COLORS_LIVE = COLORS;   // replaced by settings/display on load
+
 const $ = id => document.getElementById(id);
 function iso(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")
-+"-"+String(d.getDate()).padStart(2,"0"); }
+                 +"-"+String(d.getDate()).padStart(2,"0"); }
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
 function mondayOf(d){ const x=new Date(d);
-x.setDate(x.getDate()-((x.getDay()+6)%7)); x.setHours(0,0,0,0); return x; }
+  x.setDate(x.getDate()-((x.getDay()+6)%7)); x.setHours(0,0,0,0); return x; }
+
 $("signin").onclick = async () => {
-try { await signInWithEmailAndPassword(auth, $("email").value, $("pass").value); }
-catch (e) { $("err").textContent = e.message; }
+  try { await signInWithEmailAndPassword(auth, $("email").value, $("pass").value); }
+  catch (e) { $("err").textContent = e.message; }
 };
 $("out").onclick = () => signOut(auth);
+
 onAuthStateChanged(auth, user => {
-$("login").style.display = user ? "none" : "block";
-$("app").style.display = user ? "block" : "none";
-if (user) { weekStart = mondayOf(new Date()); load(); }
+  $("login").style.display = user ? "none" : "block";
+  $("app").style.display   = user ? "block" : "none";
+  if (user) { weekStart = mondayOf(new Date()); load(); }
 });
+
 $("prev").onclick = () => { weekStart = addDays(weekStart,-7); load(); };
 $("next").onclick = () => { weekStart = addDays(weekStart, 7); load(); };
+
 async function load() {
-const s = iso(weekStart), e = iso(addDays(weekStart,6));
-$("wkLabel").textContent = s + " to " + e;
-const rs = await getDocs(query(collection(db,"rooms"), orderBy("order")));
-rooms = rs.docs.map(d => ({id:d.id, ...d.data()})).filter(r => r.active !== false);
-const bs = await getDocs(query(collection(db,"bookings"),
-where("date",">=",s), where("date","<=",e)));
-bookings = bs.docs.map(d => ({id:d.id, ...d.data()}));
-const ns = await getDocs(query(collection(db,"dayNotes"),
-where("date",">=",s), where("date","<=",e)));
-notes = {}; ns.docs.forEach(d => notes[d.id] = d.data());
-draw();
+  const s = iso(weekStart), e = iso(addDays(weekStart,6));
+  $("wkLabel").textContent = s + "  to  " + e;
+
+  // palette comes from settings.html so staff control it, not this file
+  const st = await getDoc(doc(db,"settings","display"));
+  COLORS_LIVE = (st.exists() && st.data().colors) || DEFAULT_SETTINGS.colors;
+  const sel = $("f_color");
+  sel.innerHTML = Object.keys(COLORS_LIVE)
+    .map(n => "<option value='" + n + "'>" + n + "</option>").join("");
+
+  const rs = await getDocs(query(collection(db,"rooms"), orderBy("order")));
+  rooms = rs.docs.map(d => ({id:d.id, ...d.data()})).filter(r => r.active !== false);
+
+  const bs = await getDocs(query(collection(db,"bookings"),
+             where("date",">=",s), where("date","<=",e)));
+  bookings = bs.docs.map(d => ({id:d.id, ...d.data()}));
+
+  const ns = await getDocs(query(collection(db,"dayNotes"),
+             where("date",">=",s), where("date","<=",e)));
+  notes = {}; ns.docs.forEach(d => notes[d.id] = d.data());
+
+  draw();
 }
+
 function draw() {
-let h = "<tr><th>Week</th>" +
-rooms.map(r => "<th>"+r.label+"</th>").join("") +
-"<th>Comments</th></tr>";
-for (let i=0; i<7; i++) {
-const d = addDays(weekStart,i), key = iso(d);
-h += "<tr><td class='day'>"+DAYS[i]+"<br>"+(d.getMonth()+1)+"/"+d.getDate()+"</td>";
-rooms.forEach(r => {
-const cells = bookings.filter(b => b.date===key && b.roomId===r.id);
-h += "<td data-date='"+key+"' data-room='"+r.id+"'>" +
-cells.map(b => "<span class='chip' data-id='"+b.id+"' style='background:"+
-(COLORS[b.color]||COLORS.grey)+"'>"+(b.course||"")+"</span>").join("") +
-"</td>";
-});
-h += "<td style='text-align:left'>"+((notes[key]||{}).text||"")+"</td></tr>";
+  let h = "<tr><th>Week</th>" +
+          rooms.map(r => "<th>"+r.label+"</th>").join("") +
+          "<th>Comments</th></tr>";
+  for (let i=0; i<7; i++) {
+    const d = addDays(weekStart,i), key = iso(d);
+    h += "<tr><td class='day'>"+DAYS[i]+"<br>"+(d.getMonth()+1)+"/"+d.getDate()+"</td>";
+    rooms.forEach(r => {
+      const cells = bookings.filter(b => b.date===key && b.roomId===r.id);
+      h += "<td data-date='"+key+"' data-room='"+r.id+"'>" +
+        cells.map(b => "<span class='chip' data-id='"+b.id+"' style='background:"+
+          (COLORS_LIVE[b.color]||COLORS_LIVE.grey||"#7a8794")+"'>"+(b.course||"")+"</span>").join("") +
+        "</td>";
+    });
+    h += "<td style='text-align:left'>"+((notes[key]||{}).text||"")+"</td></tr>";
+  }
+  $("grid").innerHTML = h;
+
+  $("grid").querySelectorAll("td[data-date]").forEach(td => {
+    td.onclick = ev => {
+      const chip = ev.target.closest(".chip");
+      openDialog(td.dataset.date, td.dataset.room,
+                 chip ? bookings.find(b => b.id === chip.dataset.id) : null);
+    };
+  });
 }
-$("grid").innerHTML = h;
-$("grid").querySelectorAll("td[data-date]").forEach(td => {
-td.onclick = ev => {
-const chip = ev.target.closest(".chip");
-openDialog(td.dataset.date, td.dataset.room,
-chip ? bookings.find(b => b.id === chip.dataset.id) : null);
-};
-});
-}
+
 function openDialog(date, roomId, b) {
-editing = { date, roomId, id: b ? b.id : null };
-$("dlgTitle").textContent = (b ? "Edit " : "New ") + roomId + " " + date;
-$("f_course").value = b ? (b.course||"") : "";
-$("f_block").value = b ? (b.block||"") : "";
-$("f_inst").value = b ? (b.instructor||"") : "";
-$("f_group").value = b ? (b.groupSize||"") : "";
-$("f_contact").value= b ? (b.contact||"") : "";
-$("f_setup").value = b ? (b.setup||"") : "";
-$("f_color").value = b ? (b.color||"teal") : "teal";
-$("f_status").value = b ? (b.status||"confirmed") : "confirmed";
-$("del").style.display = b ? "inline-block" : "none";
-$("dlg").showModal();
+  editing = { date, roomId, id: b ? b.id : null };
+  $("dlgTitle").textContent = (b ? "Edit " : "New ") + roomId + "  " + date;
+  $("f_course").value = b ? (b.course||"") : "";
+  $("f_block").value  = b ? (b.block||"")  : "";
+  $("f_inst").value   = b ? (b.instructor||"") : "";
+  $("f_group").value  = b ? (b.groupSize||"") : "";
+  $("f_contact").value= b ? (b.contact||"") : "";
+  $("f_setup").value  = b ? (b.setup||"") : "";
+  $("f_color").value  = b ? (b.color||Object.keys(COLORS_LIVE)[0]) : Object.keys(COLORS_LIVE)[0];
+  $("f_status").value = b ? (b.status||"confirmed") : "confirmed";
+  $("del").style.display = b ? "inline-block" : "none";
+  $("dlg").showModal();
 }
+
 $("cancel").onclick = () => $("dlg").close();
+
 $("save").onclick = async () => {
-const data = {
-date: editing.date, roomId: editing.roomId,
-course: $("f_course").value.trim(), block: $("f_block").value.trim(),
-instructor: $("f_inst").value.trim(), color: $("f_color").value,
-status: $("f_status").value,
-groupSize: parseInt($("f_group").value,10) || 0,
-contact: $("f_contact").value.trim(),
-setup: $("f_setup").value.trim(),
-updatedBy: auth.currentUser.email, updatedAt: serverTimestamp()
+  const data = {
+    date: editing.date, roomId: editing.roomId,
+    course: $("f_course").value.trim(), block: $("f_block").value.trim(),
+    instructor: $("f_inst").value.trim(), color: $("f_color").value,
+    status: $("f_status").value,
+    groupSize: parseInt($("f_group").value,10) || 0,
+    contact: $("f_contact").value.trim(),
+    setup: $("f_setup").value.trim(),
+    updatedBy: auth.currentUser.email, updatedAt: serverTimestamp()
+  };
+  if (editing.id) await updateDoc(doc(db,"bookings",editing.id), data);
+  else            await addDoc(collection(db,"bookings"), data);
+  $("dlg").close(); load();
 };
-if (editing.id) await updateDoc(doc(db,"bookings",editing.id), data);
-else await addDoc(collection(db,"bookings"), data);
-$("dlg").close(); load();
-};
+
 $("del").onclick = async () => {
-if (confirm("Delete this booking?")) {
-await deleteDoc(doc(db,"bookings",editing.id));
-$("dlg").close(); load();
-}
+  if (confirm("Delete this booking?")) {
+    await deleteDoc(doc(db,"bookings",editing.id));
+    $("dlg").close(); load();
+  }
 };
+
 $("note").onclick = async () => {
-const which = prompt("Which day? (1=Mon ... 7=Sun)");
-const i = parseInt(which,10) - 1;
-if (isNaN(i) || i < 0 || i > 6) return;
-const key = iso(addDays(weekStart,i));
-const text = prompt("Comments for " + key + ":", (notes[key]||{}).text || "");
-if (text === null) return;
-const banner = prompt("Full-row banner (DEC FINALS, THANKSGIVING)? Blank for none:",
-(notes[key]||{}).banner || "");
-// Doc id is the date AND date is stored as a field, so range
-// queries work. Do not query on __name__ - it needs full paths.
-await setDoc(doc(db,"dayNotes",key), { date: key, text, banner: banner || "" });
-load();
+  const which = prompt("Which day? (1=Mon ... 7=Sun)");
+  const i = parseInt(which,10) - 1;
+  if (isNaN(i) || i < 0 || i > 6) return;
+  const key = iso(addDays(weekStart,i));
+  const text = prompt("Comments for " + key + ":", (notes[key]||{}).text || "");
+  if (text === null) return;
+  const banner = prompt("Full-row banner (DEC FINALS, THANKSGIVING)? Blank for none:",
+                        (notes[key]||{}).banner || "");
+  // Doc id is the date AND date is stored as a field, so range
+  // queries work. Do not query on __name__ - it needs full paths.
+  await setDoc(doc(db,"dayNotes",key), { date: key, text, banner: banner || "" });
+  load();
 };
+
 // Most weeks repeat. This is the button that saves the real time.
 $("copy").onclick = async () => {
-if (!confirm("Copy the previous week's bookings into this week?")) return;
-const ps = iso(addDays(weekStart,-7)), pe = iso(addDays(weekStart,-1));
-const prev = await getDocs(query(collection(db,"bookings"),
-where("date",">=",ps), where("date","<=",pe)));
-for (const d of prev.docs) {
-const b = d.data();
-const nd = iso(addDays(new Date(b.date + "T00:00:00"), 7));
-await addDoc(collection(db,"bookings"), { ...b, date: nd,
-updatedBy: auth.currentUser.email, updatedAt: serverTimestamp() });
-}
-load();
+  if (!confirm("Copy the previous week's bookings into this week?")) return;
+  const ps = iso(addDays(weekStart,-7)), pe = iso(addDays(weekStart,-1));
+  const prev = await getDocs(query(collection(db,"bookings"),
+               where("date",">=",ps), where("date","<=",pe)));
+  for (const d of prev.docs) {
+    const b = d.data();
+    const nd = iso(addDays(new Date(b.date + "T00:00:00"), 7));
+    await addDoc(collection(db,"bookings"), { ...b, date: nd,
+      updatedBy: auth.currentUser.email, updatedAt: serverTimestamp() });
+  }
+  load();
 };
 </script>
 </body>
