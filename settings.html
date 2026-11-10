@@ -83,6 +83,8 @@
         <label><input type="checkbox" id="s_weekend"> Show Saturday and Sunday</label>
         <label><input type="checkbox" id="s_comments"> Show the Comments column</label>
         <label><input type="checkbox" id="s_clock"> Show the clock</label>
+        <label>Minutes offline before the warning banner shows</label>
+        <input id="s_grace" type="number" min="1" max="60">
       </div>
     </div>
   </div>
@@ -176,6 +178,7 @@ function draw() {
   $("s_weekend").checked  = settings.showWeekend !== false;
   $("s_comments").checked = settings.showComments !== false;
   $("s_clock").checked    = settings.showClock !== false;
+  $("s_grace").value      = settings.offlineGraceMin || 5;
 
   // palette
   const pal = $("palette"); pal.innerHTML = "";
@@ -265,6 +268,7 @@ $("saveBtn").onclick = async () => {
     showWeekend:  $("s_weekend").checked,
     showComments: $("s_comments").checked,
     showClock:    $("s_clock").checked,
+    offlineGraceMin: parseInt($("s_grace").value,10) || 5,
     colors: readPalette(),
     theme,
     updatedBy: auth.currentUser.email,
