@@ -91,18 +91,33 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, doc, query, where, orderBy, onSnapshot }
+import { initializeFirestore, persistentLocalCache, collection, doc, query,
+         where, orderBy, onSnapshot }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig, COLORS as FALLBACK_COLORS, DEFAULT_SETTINGS }
   from "./firebase-config.js";
 
-const db = getFirestore(initializeApp(firebaseConfig));
+// Persistent cache: if the network drops, the board keeps showing the last
+// known schedule instead of going blank.
+const db = initializeFirestore(initializeApp(firebaseConfig),
+                               { localCache: persistentLocalCache() });
 const DAYS = ["Mon","Tues","Wed","Thurs","Fri","Sat","Sun"];
 
 let rooms = [], bookings = [], notes = {}, offset = 0, rotating = true;
 let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
 let colors = settings.colors;
 let lastData = Date.now(), lastFlip = Date.now();
+let haveData = false, cacheSince = 0;
+
+// Firestore reports whether a snapshot came from the server or the local
+// cache. That is far more reliable than navigator.onLine, which flaps on
+// campus wifi and VPNs and was causing the banner to flash on and off.
+function noteSnapshot(snap) {
+  const fromCache = snap.metadata && snap.metadata.fromCache;
+  if (fromCache) { if (!cacheSince) cacheSince = Date.now(); }
+  else { cacheSince = 0; lastData = Date.now(); }
+  return fromCache;
+}
 const startDay = iso(new Date());
 
 function iso(d) {
@@ -148,20 +163,29 @@ function applyTheme() {
 
 /* ---------- live data ---------- */
 onSnapshot(query(collection(db,"rooms"), orderBy("order")), snap => {
+  const fromCache = noteSnapshot(snap);
+  if (fromCache && snap.empty && rooms.length) return;
   rooms = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(r => r.active !== false);
-  lastData = Date.now(); render();
-});
+  render();
+}, err => console.error("rooms listener:", err));
 onSnapshot(query(collection(db,"bookings"),
                  where("date",">=",rangeStart), where("date","<=",rangeEnd)), snap => {
+  const fromCache = noteSnapshot(snap);
+  // An empty snapshot served from cache during a dropout is not news --
+  // it is the absence of news. Keep what is already on screen.
+  if (fromCache && snap.empty && haveData) return;
   bookings = snap.docs.map(d => ({id:d.id, ...d.data()}));
-  lastData = Date.now(); render();
-});
+  if (bookings.length) haveData = true;
+  render();
+}, err => console.error("bookings listener:", err));
 onSnapshot(query(collection(db,"dayNotes"),
                  where("date",">=",rangeStart), where("date","<=",rangeEnd)), snap => {
+  const fromCache = noteSnapshot(snap);
+  if (fromCache && snap.empty && Object.keys(notes).length) return;
   notes = {};
   snap.docs.forEach(d => notes[d.id] = d.data());
-  lastData = Date.now(); render();
-});
+  render();
+}, err => console.error("dayNotes listener:", err));
 
 function render() {
   if (!rooms.length) return;
@@ -315,7 +339,10 @@ setInterval(() => {
 setInterval(() => {
   document.getElementById("clock").textContent =
     new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
-  const stale = !navigator.onLine || (Date.now() - lastData > 15*60*1000);
+  // Only complain after a sustained outage. A two-second blip is not worth
+  // shouting about, and the cached schedule on screen is still correct.
+  const graceMs = (settings.offlineGraceMin || 5) * 60 * 1000;
+  const stale = cacheSince && (Date.now() - cacheSince > graceMs);
   document.getElementById("offline").style.display = stale ? "block" : "none";
   if (iso(new Date()) !== startDay && !overlay.classList.contains("on")) location.reload();
 }, 30000);
