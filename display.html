@@ -31,14 +31,17 @@
                 color:var(--muted); text-transform:uppercase; }
   #noteList { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start;
               overflow-y:auto; max-height:var(--nh, 24vh); }
-  .note { background:var(--bg); border:1px solid var(--line); border-left:5px solid;
-          border-radius:7px; padding:10px 12px; min-width:190px; max-width:330px;
-          font-size:calc(0.8vw * var(--s)); line-height:1.35; cursor:pointer;
-          white-space:pre-wrap; position:relative; }
-  .note:hover { border-color:var(--muted); }
-  .note .meta { display:block; margin-top:7px; font-size:85%; color:var(--muted); }
-  .note.pinned::after { content:"PINNED"; position:absolute; top:6px; right:8px;
-                        font-size:9px; letter-spacing:1px; color:var(--note); }
+  .note { border:1px solid rgba(0,0,0,.25); border-radius:7px;
+          padding:11px 13px; min-width:200px; max-width:340px;
+          font-size:calc(0.85vw * var(--s)); line-height:1.35; cursor:pointer;
+          white-space:pre-wrap; word-break:break-word; position:relative;
+          font-weight:500; box-shadow:0 2px 6px rgba(0,0,0,.25); }
+  .note:hover { outline:2px solid #fff; outline-offset:1px; }
+  .note .meta { display:block; margin-top:8px; font-size:84%; opacity:.72;
+                font-weight:400; }
+  .note.pinned::after { content:"PIN"; position:absolute; top:5px; right:7px;
+                        font-size:9px; letter-spacing:1px; opacity:.6;
+                        font-weight:700; }
   #noteEditor { position:fixed; inset:0; background:rgba(5,12,20,.72); display:none;
                 align-items:center; justify-content:center; padding:20px; z-index:60; }
   #noteEditor.on { display:flex; }
@@ -50,9 +53,14 @@
               background:#ffffff; color:#102a43; resize:vertical;
               font-family:inherit; }
   #noteColors { display:flex; gap:8px; margin:12px 0; flex-wrap:wrap; }
-  #noteColors button { width:34px; height:34px; border-radius:50%; border:2px solid
+  #noteColors button { width:36px; height:36px; border-radius:50%; border:2px solid
                        transparent; cursor:pointer; }
-  #noteColors button.sel { border-color:var(--fg); }
+  #noteColors button.sel { border-color:#ffffff; box-shadow:0 0 0 2px #12263a; }
+  #noteColors input[type=color] { width:36px; height:36px; padding:0; border:2px
+                       solid #4a6a88; border-radius:50%; background:none;
+                       cursor:pointer; }
+  #noteColors .customwrap { display:flex; align-items:center; gap:5px;
+                       font-size:11px; color:#8fb3cc; }
   #noteHint { font-size:12px; color:var(--muted); margin:10px 0 0; }
   #emptyWeek { padding:18px; color:var(--muted);
                font-size:calc(1.1vw * var(--s)); text-align:center; }
@@ -102,39 +110,39 @@
   #overlay { position:fixed; inset:0; background:rgba(5,12,20,.72); display:none;
              align-items:center; justify-content:center; padding:20px; z-index:50; }
   #overlay.on { display:flex; }
-  #card { background:var(--panel); border:1px solid var(--line); border-radius:10px;
-          width:min(620px,100%); max-height:100%; overflow-y:auto; }
-  #cardHead { padding:18px 20px 14px; border-bottom:1px solid var(--line);
+  #card { background:#12263a; color:#eaf1f8; border:1px solid #2c4257;
+          border-radius:10px; width:min(620px,100%); max-height:100%;
+          overflow-y:auto; }
+  #cardHead { padding:18px 20px 14px; border-bottom:1px solid #2c4257;
               display:flex; gap:12px; align-items:flex-start; }
-  #cardRoom { font-size:30px; font-weight:700; }
-  #cardDate { font-size:15px; color:var(--muted); margin-top:3px; }
-  #close { margin-left:auto; background:none; border:1px solid var(--line);
-           color:var(--muted); border-radius:6px; width:38px; height:38px;
+  #cardRoom { font-size:30px; font-weight:700; color:#ffffff; }
+  #cardDate { font-size:15px; color:#8fb3cc; margin-top:3px; }
+  #close { margin-left:auto; background:none; border:1px solid #2c4257;
+           color:#8fb3cc; border-radius:6px; width:38px; height:38px;
            font-size:20px; cursor:pointer; }
   #cardBody { padding:16px 20px 20px; }
-  .entry { border-left:5px solid var(--muted); background:var(--bg);
+  .entry { border-left:5px solid #8fb3cc; background:#0f1f30; color:#eaf1f8;
            border-radius:6px; padding:12px 14px; margin-bottom:12px; }
   .entry h3 { margin:0 0 2px; font-size:19px; }
-  .entry .when { font-size:15px; color:var(--muted); margin-bottom:10px; }
+  .entry .when { font-size:15px; color:#8fb3cc; margin-bottom:10px; }
   .kv { display:grid; grid-template-columns:100px 1fr; gap:4px 10px; font-size:15px; }
-  .kv dt { color:var(--muted); }
+  .kv dt { color:#8fb3cc; }
   .kv dd { margin:0; }
   .flag { display:inline-block; background:#7a3b12; color:var(--note);
           border-radius:4px; padding:1px 7px; font-size:13px; font-weight:700;
           margin-left:6px; }
   .flag.over { background:#7a1c1c; color:#ffc9c9; }
-  .empty { color:var(--muted); font-size:16px; }
+  .empty { color:#8fb3cc; font-size:16px; }
   #cardNote { margin-top:6px; padding:10px 12px; border-radius:6px;
-              background:#2a2416; color:var(--note); font-size:15px; }
-  #timeout { font-size:13px; color:var(--muted); padding:0 20px 16px; }
+              background:#2a2416; color:#ffd9a0; font-size:15px; }
+  #timeout { font-size:13px; color:#8fb3cc; padding:0 20px 16px; }
   .btn { background:#1f3864; color:#fff; border:0; border-radius:5px;
          padding:8px 13px; font-weight:600; font-size:14px; cursor:pointer;
          margin:0 6px 6px 0; }
-  .btn.ghost { background:transparent; color:var(--muted);
-               border:1px solid var(--line); }
+  .btn.ghost { background:transparent; color:#cfe0ee; border:1px solid #4a6a88; }
   .btn.danger { background:transparent; color:#ff9e9e; border:1px solid #ff9e9e; }
   .btn.small { padding:4px 9px; font-size:12px; margin:0; }
-  .f label { display:block; font-size:12px; font-weight:600; color:var(--muted);
+  .f label { display:block; font-size:12px; font-weight:600; color:#8fb3cc;
              margin:9px 0 2px; }
   /* Fields keep their own colours on purpose. Inheriting the board theme
      meant a light background could end up with light text on it. */
@@ -155,21 +163,22 @@
   #quickPick button { font-size:12px; padding:4px 9px; }
   #stationBlock { margin-top:12px; border-top:1px solid var(--line);
                   padding-top:10px; }
-  .stn { border:1px solid var(--line); border-radius:7px; padding:9px 11px;
-         margin-bottom:8px; }
+  .stn { border:1px solid #2c4257; background:#0f1f30; color:#eaf1f8;
+         border-radius:7px; padding:9px 11px; margin-bottom:8px; }
   .stn b { font-size:14px; }
-  .stn .tag { font-size:11px; color:var(--muted); margin-left:6px;
+  .stn .tag { font-size:11px; color:#8fb3cc; margin-left:6px;
               text-transform:uppercase; letter-spacing:1px; }
   .stn input { margin-top:5px; background:#fff; color:#102a43;
                border:1px solid #8fa6bd; border-radius:4px; padding:8px;
                width:100%; font-size:15px; }
-  .setup { border-left:5px solid var(--muted); background:var(--bg);
-           border-radius:6px; padding:10px 12px; margin-bottom:8px; }
-  .setup b { font-size:15px; }
-  .setup .sk { color:var(--fg); }
-  .setup .sup { color:var(--note); font-size:14px; display:block; margin-top:3px; }
-  .stationline { display:block; font-size:13px; color:var(--muted);
-                 margin-top:3px; }
+  .setup { border-left:5px solid #8fb3cc; background:#0f1f30; color:#eaf1f8;
+           border-radius:6px; padding:11px 13px; margin-bottom:8px; }
+  .setup b { font-size:16px; color:#ffffff; }
+  .setup .tag { font-size:11px; color:#8fb3cc; margin-left:6px;
+                text-transform:uppercase; letter-spacing:1px; }
+  .setup .sk { color:#eaf1f8; }
+  .setup .sup { color:#ffd9a0; font-size:14px; display:block; margin-top:3px; }
+  .stationline { display:block; font-size:13px; color:#8fb3cc; margin-top:3px; }
   .itemrow { display:flex; gap:7px; align-items:center; margin-bottom:6px; }
   .itemrow select.sx_type { flex:none; width:132px; }
   .itemrow input.sx_label { flex:1; width:auto; }
@@ -180,8 +189,9 @@
   .avail { font-size:12px; margin-left:2px; white-space:nowrap; }
   .avail.ok { color:#8fe0a0; }
   .avail.over { color:#ff9e9e; font-weight:700; }
-  .itemchip { display:inline-block; background:var(--bg); border:1px solid var(--line);
-              border-radius:12px; padding:2px 9px; font-size:12px; margin:3px 4px 0 0; }
+  .itemchip { display:inline-block; background:#0f1f30; border:1px solid #2c4257;
+              color:#eaf1f8; border-radius:12px; padding:2px 9px; font-size:12px;
+              margin:3px 4px 0 0; }
   .itemchip.over { border-color:#ff9e9e; color:#ff9e9e; }
   .entryhead { display:flex; align-items:center; gap:8px; }
   .entryhead h3 { flex:1; }
@@ -525,7 +535,19 @@ async function quickAddItem(then) {
 }
 
 /* ---------- brainstorm notes ---------- */
-let boardNotes = [], editingNote = null, noteColor = "yellow";
+let boardNotes = [], editingNote = null, noteColor = "yellow", noteHex = null;
+
+// Pick black or white text for a background, so a custom colour can never
+// produce an unreadable note.
+function readableOn(hex) {
+  const h = (hex||"").replace("#","");
+  if (h.length !== 6) return "#ffffff";
+  const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16),
+        b = parseInt(h.slice(4,6),16);
+  const lum = (0.299*r + 0.587*g + 0.114*b) / 255;
+  return lum > 0.62 ? "#13202c" : "#ffffff";
+}
+const noteHexOf = n => n.hex || colors[n.color] || colors.yellow || "#b08f00";
 
 onSnapshot(query(collection(db,"boardNotes"), orderBy("createdAt","desc")), snap => {
   const fromCache = noteSnapshot(snap);
@@ -547,19 +569,21 @@ function renderNotes() {
   const sorted = boardNotes.slice().sort((a,b) =>
     (b.pinned?1:0) - (a.pinned?1:0));
   if (!sorted.length) {
-    list.innerHTML = "<div class='note' style='border-left-color:" +
-      (colors.grey||"#7a8794") + "'>" +
+    const bg = colors.grey || "#7a8794";
+    list.innerHTML = "<div class='note' style='background:" + bg + ";color:" +
+      readableOn(bg) + "'>" +
       (user ? "No notes yet. Tap + Add note to start one."
             : "No notes yet.") + "</div>";
     return;
   }
-  list.innerHTML = sorted.map(n =>
-    "<div class='note" + (n.pinned ? " pinned" : "") + "' data-id='" + n.id +
-    "' style='border-left-color:" + (colors[n.color]||colors.yellow||"#b08f00") + "'>" +
-    esc(n.text || "") +
-    "<span class='meta'>" + esc((n.author||"").split("@")[0]) +
-    (n.updatedAt ? " &middot; " + fmtWhen(n.updatedAt) : "") + "</span></div>"
-  ).join("");
+  list.innerHTML = sorted.map(n => {
+    const bg = noteHexOf(n);
+    return "<div class='note" + (n.pinned ? " pinned" : "") + "' data-id='" +
+      n.id + "' style='background:" + bg + ";color:" + readableOn(bg) + "'>" +
+      esc(n.text || "") +
+      "<span class='meta'>" + esc((n.author||"").split("@")[0]) +
+      (n.updatedAt ? " &middot; " + fmtWhen(n.updatedAt) : "") + "</span></div>";
+  }).join("");
 
   list.querySelectorAll(".note[data-id]").forEach(el => {
     el.onclick = () => {
@@ -580,6 +604,7 @@ function noteEditor(n) {
   if (!user) return;
   editingNote = n || null;
   noteColor = n ? (n.color || "yellow") : "yellow";
+  noteHex = n ? (n.hex || null) : null;
   document.getElementById("noteBoxTitle").textContent = n ? "Edit note" : "New note";
   document.getElementById("noteText").value = n ? (n.text || "") : "";
   document.getElementById("noteDel").style.display = n ? "" : "none";
@@ -589,13 +614,33 @@ function noteEditor(n) {
 
   const pal = document.getElementById("noteColors");
   pal.innerHTML = Object.entries(colors).map(([name,hex]) =>
-    "<button data-c='" + name + "' title='" + name + "' style='background:" + hex +
-    "' class='" + (name === noteColor ? "sel" : "") + "'></button>").join("");
+      "<button data-c='" + name + "' data-hex='" + hex + "' title='" + name +
+      "' style='background:" + hex + "' class='" +
+      (!noteHex && name === noteColor ? "sel" : "") + "'></button>").join("") +
+    "<span class='customwrap'><input type='color' id='noteCustom' value='" +
+      (noteHex || colors[noteColor] || "#b08f00") + "' title='Any colour'>" +
+      "custom</span>";
+
+  function applyPreview() {
+    const bg = noteHex || colors[noteColor] || "#b08f00";
+    const ta = document.getElementById("noteText");
+    ta.style.background = bg;
+    ta.style.color = readableOn(bg);
+  }
+
   pal.querySelectorAll("button").forEach(b => b.onclick = () => {
-    noteColor = b.dataset.c;
+    noteColor = b.dataset.c; noteHex = null;
     pal.querySelectorAll("button").forEach(x => x.className = "");
     b.className = "sel";
+    applyPreview();
   });
+  const custom = document.getElementById("noteCustom");
+  custom.oninput = () => {
+    noteHex = custom.value; noteColor = "custom";
+    pal.querySelectorAll("button").forEach(x => x.className = "");
+    applyPreview();
+  };
+  applyPreview();
 
   document.getElementById("noteEditor").classList.add("on");
   const ta = document.getElementById("noteText");
@@ -610,8 +655,8 @@ function closeNoteEditor() {
 async function saveNote() {
   const text = document.getElementById("noteText").value.trim();
   if (!text) { closeNoteEditor(); return; }
-  const data = { text, color: noteColor, author: user.email,
-                 updatedAt: serverTimestamp() };
+  const data = { text, color: noteColor, hex: noteHex || null,
+                 author: user.email, updatedAt: serverTimestamp() };
   if (editingNote) await updateDoc(doc(db,"boardNotes",editingNote.id), data);
   else await addDoc(collection(db,"boardNotes"),
                     Object.assign({createdAt: serverTimestamp(), pinned:false}, data));
@@ -780,10 +825,10 @@ function setupSheet(key, roomId) {
                       supplies:x.supplies, color:b.color });
       }));
       if (!uses.length) {
-        return "<div class='setup' style='border-left-color:" +
-          (colors.grey||"#7a8794") + "'><b>" + esc(st.label) + "</b> " +
+        return "<div class='setup' style='border-left-color:#4a6a88'>" +
+          "<b>" + esc(st.label) + "</b> " +
           "<span class='tag'>" + esc(st.type||"") + "</span>" +
-          "<span class='sup' style='color:var(--muted)'>Nothing assigned</span></div>";
+          "<span class='stationline'>No skill assigned for this day</span></div>";
       }
       return uses.map(u =>
         "<div class='setup' style='border-left-color:" +
@@ -795,7 +840,17 @@ function setupSheet(key, roomId) {
         "</div>").join("");
     }).join("");
   }
+  if (stations.length && !list.length) {
+    body = "<p class='empty'>Nothing is booked in " + esc(room.label||roomId) +
+           " on this day, so no skills are assigned to its " + stations.length +
+           " stations yet.</p>" + body;
+  } else if (stations.length) {
+    body = "<p class='empty'>Skills come from the bookings in this room. " +
+           "Edit a booking to assign them.</p>" + body;
+  }
   body += "<div id='acts'>" +
+    (user && list.length
+      ? "<button class='btn' id='assignHere'>Assign skills</button>" : "") +
     (user ? "<button class='btn' id='editStn'>" +
             (stations.length ? "Edit beds &amp; tables" : "Set up beds &amp; tables") +
             "</button>" : "") +
@@ -805,6 +860,8 @@ function setupSheet(key, roomId) {
   if (back) back.onclick = () => openRoom(key, roomId);
   const ed = document.getElementById("editStn");
   if (ed) ed.onclick = () => stationEditor(key, roomId);
+  const as = document.getElementById("assignHere");
+  if (as) as.onclick = () => editForm(list[0]);
 }
 
 // Add or rename a room's beds and tables without leaving the board.
