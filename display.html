@@ -502,6 +502,18 @@ function itemBooked(itemId, date, ignoreBookingId) {
            .reduce((n,u) => n + (u.qty||1), 0);
 }
 
+// Add something to the inventory without leaving whatever you were doing.
+async function quickAddItem(then) {
+  if (!user) return;
+  const name = prompt("What is it? (e.g. HAL manikin)");
+  if (!name || !name.trim()) return;
+  const qty = parseInt(prompt("How many does the lab have?", "1"), 10);
+  const id = name.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").slice(0,40);
+  await setDoc(doc(db,"inventory",id),
+    { name: name.trim(), qty: isNaN(qty) ? 1 : qty, category: "", notes: "" });
+  if (typeof then === "function") setTimeout(then, 400);
+}
+
 /* ---------- brainstorm notes ---------- */
 let boardNotes = [], editingNote = null, noteColor = "yellow";
 
@@ -729,8 +741,9 @@ function setupSheet(key, roomId) {
 
   let body = "";
   if (!stations.length) {
-    body = "<p class='empty'>No beds or tables are set up for this room yet. " +
-           "Add them under the gear icon, in Rooms.</p>";
+    body = "<p class='empty'>No beds or tables set up for " +
+           esc(room.label||roomId) + " yet.</p>" +
+           (user ? "" : "<p class='empty'>Sign in to add them.</p>");
   } else {
     body = stations.map(st => {
       const uses = [];
@@ -755,10 +768,81 @@ function setupSheet(key, roomId) {
         "</div>").join("");
     }).join("");
   }
-  body += "<div id='acts'><button class='btn ghost' id='backRoom'>Back</button></div>";
+  body += "<div id='acts'>" +
+    (user ? "<button class='btn' id='editStn'>" +
+            (stations.length ? "Edit beds &amp; tables" : "Set up beds &amp; tables") +
+            "</button>" : "") +
+    "<button class='btn ghost' id='backRoom'>Back</button></div>";
   openPopup("Setup — " + (room.label||roomId), key, body);
   const back = document.getElementById("backRoom");
   if (back) back.onclick = () => openRoom(key, roomId);
+  const ed = document.getElementById("editStn");
+  if (ed) ed.onclick = () => stationEditor(key, roomId);
+}
+
+// Add or rename a room's beds and tables without leaving the board.
+function stationEditor(key, roomId) {
+  if (!user) return;
+  stopTimers();
+  const room = rooms.find(r => r.id === roomId) || {};
+  let draft = JSON.parse(JSON.stringify(room.stations || []));
+
+  function paint() {
+    const list = draft.length
+      ? draft.map((st,i) =>
+          "<div class='stn'><div class='itemrow'>" +
+          "<select class='sx_type' data-i='" + i + "' style='width:120px'>" +
+            ["bed","table","chair","trainer","other"].map(t =>
+              "<option" + (st.type === t ? " selected" : "") + ">" + t +
+              "</option>").join("") +
+          "</select>" +
+          "<input class='sx_label' data-i='" + i + "' value='" +
+            esc(st.label||"") + "' placeholder='Name staff use out loud'>" +
+          "<button class='btn ghost small sx_del' data-i='" + i +
+            "'>&times;</button>" +
+          "</div></div>").join("")
+      : "<p class='empty'>Nothing yet — add a bed or a table below.</p>";
+
+    document.getElementById("cardBody").innerHTML =
+      "<div class='f'>" + list +
+      "<div id='quickPick' style='margin-top:10px'>" +
+        "<button class='btn ghost small sx_add' data-t='bed'>+ Bed</button>" +
+        "<button class='btn ghost small sx_add' data-t='table'>+ Table</button>" +
+        "<button class='btn ghost small sx_add' data-t='chair'>+ Chair</button>" +
+        "<button class='btn ghost small sx_add' data-t='trainer'>+ Trainer</button>" +
+        "<button class='btn ghost small sx_add' data-t='other'>+ Other</button>" +
+      "</div>" +
+      "<p style='margin-top:16px'>" +
+        "<button class='btn' id='sx_save'>Save</button>" +
+        "<button class='btn ghost' id='sx_cancel'>Cancel</button>" +
+      "</p></div>";
+
+    document.querySelectorAll(".sx_type").forEach(e =>
+      e.onchange = () => draft[+e.dataset.i].type = e.value);
+    document.querySelectorAll(".sx_label").forEach(e =>
+      e.oninput = () => draft[+e.dataset.i].label = e.value);
+    document.querySelectorAll(".sx_del").forEach(e =>
+      e.onclick = () => { draft.splice(+e.dataset.i,1); paint(); });
+    document.querySelectorAll(".sx_add").forEach(e => e.onclick = () => {
+      const t = e.dataset.t;
+      const n = draft.filter(x => x.type === t).length + 1;
+      draft.push({ id: t + n + "_" + Date.now().toString(36).slice(-4), type: t,
+                   label: t.charAt(0).toUpperCase() + t.slice(1) + " " + n });
+      paint();
+    });
+    document.getElementById("sx_cancel").onclick = () => setupSheet(key, roomId);
+    document.getElementById("sx_save").onclick = async () => {
+      await updateDoc(doc(db,"rooms",roomId),
+        { stations: draft.filter(x => (x.label||"").trim()) });
+      setupSheet(key, roomId);
+    };
+  }
+
+  document.getElementById("cardRoom").textContent =
+    "Beds & tables — " + (room.label||roomId);
+  document.getElementById("cardDate").textContent =
+    "Applies to this room every day, not just " + longDate(key);
+  paint();
 }
 
 function equipmentDay(key) {
@@ -942,8 +1026,11 @@ function editForm(b) {
     const room = rooms.find(r => r.id === chosen[0]) || {};
     const list = room.stations || [];
     if (!list.length) {
-      host.innerHTML = "<p class='empty'>No beds or tables set up for " +
-        esc(room.label||"") + " yet. Add them under the gear icon, in Rooms.</p>";
+      host.innerHTML = "<label>Stations</label><p class='empty'>No beds or " +
+        "tables set up for " + esc(room.label||"") + " yet. " +
+        "<button class='btn ghost small' id='stnShortcut'>Set them up now</button></p>";
+      const sc = document.getElementById("stnShortcut");
+      if (sc) sc.onclick = () => stationEditor(openCell.date, chosen[0]);
       return;
     }
     const have = {};
@@ -968,8 +1055,11 @@ function editForm(b) {
   function drawItems() {
     const host = document.getElementById("itemBlock");
     if (!inventory.length) {
-      host.innerHTML = "<p class='empty'>No equipment listed yet. " +
-        "Add items under the gear icon, in Equipment inventory.</p>";
+      host.innerHTML = "<label>Equipment</label><p class='empty'>Nothing in the " +
+        "inventory yet. <button class='btn ghost small' id='invQuick'>" +
+        "Add an item</button></p>";
+      const q = document.getElementById("invQuick");
+      if (q) q.onclick = quickAddItem;
       return;
     }
     const chosen = [...document.querySelectorAll("#roomPick input:checked")]
@@ -1003,7 +1093,8 @@ function editForm(b) {
           "<button class='btn ghost small it_del' data-i='" + i + "'>&times;</button>" +
           "</div>";
       }).join("") +
-      "<button class='btn ghost small' id='itAdd'>+ Reserve equipment</button>";
+      "<button class='btn ghost small' id='itAdd'>+ Reserve equipment</button>" +
+      "<button class='btn ghost small' id='itNew'>+ New item in inventory</button>";
 
     host.querySelectorAll(".it_id").forEach(e => e.onchange = () => {
       itemRows[+e.dataset.i].id = e.value; drawItems(); });
@@ -1016,6 +1107,8 @@ function editForm(b) {
     const add = document.getElementById("itAdd");
     if (add) add.onclick = () => {
       itemRows.push({ id: inventory[0].id, qty: 1, station: "" }); drawItems(); };
+    const nw = document.getElementById("itNew");
+    if (nw) nw.onclick = () => quickAddItem(drawItems);
   }
 
   const pick = document.getElementById("roomPick");
