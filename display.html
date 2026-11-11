@@ -312,9 +312,9 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { initializeFirestore, persistentLocalCache, collection, doc, query,
-         where, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc,
-         serverTimestamp }
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+         memoryLocalCache, collection, doc, query, where, orderBy, onSnapshot,
+         addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -367,6 +367,16 @@ function mondayOf(d) {
 function esc(s) {
   return String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 }
+
+// If nothing has arrived after 12 seconds, say so instead of waiting mutely.
+setTimeout(() => {
+  if (!rooms.length) {
+    document.getElementById("wkTitle").textContent = "No rooms loaded";
+    document.getElementById("sub").textContent =
+      "The board could not read the room list. Check the browser console (F12), " +
+      "or that the rooms collection exists and the rules are published.";
+  }
+}, 12000);
 
 const base = mondayOf(new Date());
 const rangeStart = iso(addDays(base,-120)); // back far enough to look at past weeks
