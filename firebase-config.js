@@ -71,5 +71,3 @@ export const DEFAULT_SETTINGS = {
     divider: "#d05a5a"
   }
 };
-
-};
