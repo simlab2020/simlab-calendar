@@ -149,6 +149,34 @@
   </div>
 
   <div class="panel">
+    <h2 style="margin-top:0">Graphics &amp; branding</h2>
+    <p class="hint">
+      Upload image files to the GitHub repo, then put the file name here —
+      <b>utep-logo.png</b> is enough if it sits beside display.html. A full
+      https:// address works too. PNG with a transparent background looks best
+      on a dark board. Use official UTEP artwork from University Communications
+      and follow the campus brand guidelines.
+    </p>
+    <div class="grid2">
+      <div>
+        <label>Logo in the header</label>
+        <input id="s_logo" type="text" placeholder="utep-logo.png">
+        <label>Faded watermark behind the calendar</label>
+        <input id="s_wm" type="text" placeholder="pickaxe.png">
+      </div>
+      <div>
+        <label>Watermark strength (%)</label>
+        <input id="s_wmo" type="number" min="0" max="60">
+        <label><input type="checkbox" id="s_fit"> Scale the board to fill the screen</label>
+        <p class="hint" style="margin-top:8px">
+          Holiday artwork — the turkey, a Christmas graphic — goes on a day
+          banner instead: open a day on the board and set its decoration.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
     <h2 style="margin-top:0">Notes area</h2>
     <p class="hint">
       A shared scratch space under the calendar. Anyone signed in can add, edit,
@@ -294,6 +322,11 @@ function draw() {
   $("s_notes").checked    = settings.showNotes !== false;
   $("s_notesTitle").value = settings.notesTitle || "Notes & Ideas";
   $("s_notesH").value     = settings.notesHeightVh || 24;
+  $("s_logo").value       = settings.logoUrl || "";
+  $("s_wm").value         = settings.watermarkUrl || "";
+  $("s_wmo").value        = settings.watermarkOpacity != null
+                              ? settings.watermarkOpacity : 8;
+  $("s_fit").checked      = settings.fitToScreen !== false;
   $("s_admin").checked    = settings.showAdminButtons !== false;
 
   // palette
@@ -492,6 +525,10 @@ $("saveBtn").onclick = async () => {
     showNotes: $("s_notes").checked,
     notesTitle: $("s_notesTitle").value.trim() || "Notes & Ideas",
     notesHeightVh: parseInt($("s_notesH").value,10) || 24,
+    logoUrl: $("s_logo").value.trim(),
+    watermarkUrl: $("s_wm").value.trim(),
+    watermarkOpacity: parseInt($("s_wmo").value,10) || 0,
+    fitToScreen: $("s_fit").checked,
     showAdminButtons: $("s_admin").checked,
     colors: readPalette(),
     theme,
