@@ -85,6 +85,47 @@
         <label><input type="checkbox" id="s_clock"> Show the clock</label>
         <label>Minutes offline before the warning banner shows</label>
         <input id="s_grace" type="number" min="1" max="60">
+        <label><input type="checkbox" id="s_skip"> Skip empty weeks when rotating</label>
+        <label><input type="checkbox" id="s_admin"> Show the gear and sign-in buttons on the board</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 style="margin-top:0">Layout</h2>
+    <p class="hint">
+      <b>One week</b> fills the screen and rotates, like a daily board.
+      <b>Wall of weeks</b> shows several weeks side by side, the way the paper
+      grids are pinned up now — good for planning, harder to read from a distance.
+    </p>
+    <div class="grid2">
+      <div>
+        <label>Layout</label>
+        <select id="s_layout">
+          <option value="single">One week at a time (rotates)</option>
+          <option value="multi">Wall of weeks (several at once)</option>
+        </select>
+        <label>How many weeks to show</label>
+        <input id="s_mweeks" type="number" min="1" max="26">
+        <label>Semester start Monday (for week numbering)</label>
+        <input id="s_semstart" type="text" placeholder="2026-08-24">
+      </div>
+      <div>
+        <label>Panels across</label>
+        <select id="s_mcols">
+          <option value="1">1</option><option value="2">2</option>
+          <option value="3">3</option><option value="4">4</option>
+          <option value="5">5</option><option value="6">6</option>
+        </select>
+        <label>Start from</label>
+        <select id="s_start">
+          <option value="-2">Two weeks ago</option>
+          <option value="-1">Last week</option>
+          <option value="0">This week</option>
+          <option value="1">Next week</option>
+          <option value="2">In two weeks</option>
+          <option value="4">In four weeks</option>
+        </select>
       </div>
     </div>
   </div>
@@ -98,6 +139,25 @@
     <div id="palette"></div>
     <p><button class="ghost tiny" id="addColor">+ Add a color</button></p>
     <div id="preview"></div>
+  </div>
+
+  <div class="panel">
+    <h2 style="margin-top:0">Notes area</h2>
+    <p class="hint">
+      A shared scratch space under the calendar. Anyone signed in can add, edit,
+      pin or delete notes, and they appear on every screen at once.
+    </p>
+    <div class="grid2">
+      <div>
+        <label><input type="checkbox" id="s_notes"> Show the notes area</label>
+        <label>Heading</label>
+        <input id="s_notesTitle" type="text" placeholder="Notes &amp; Ideas">
+      </div>
+      <div>
+        <label>Height on screen (% of screen height)</label>
+        <input id="s_notesH" type="number" min="8" max="60">
+      </div>
+    </div>
   </div>
 
   <div class="panel">
@@ -179,6 +239,16 @@ function draw() {
   $("s_comments").checked = settings.showComments !== false;
   $("s_clock").checked    = settings.showClock !== false;
   $("s_grace").value      = settings.offlineGraceMin || 5;
+  $("s_skip").checked     = settings.skipEmptyWeeks !== false;
+  $("s_layout").value     = settings.layout || "single";
+  $("s_mweeks").value     = settings.multiWeeks || 8;
+  $("s_mcols").value      = settings.multiCols || 3;
+  $("s_start").value      = settings.startOffset || 0;
+  $("s_semstart").value   = settings.semesterStart || "";
+  $("s_notes").checked    = settings.showNotes !== false;
+  $("s_notesTitle").value = settings.notesTitle || "Notes & Ideas";
+  $("s_notesH").value     = settings.notesHeightVh || 24;
+  $("s_admin").checked    = settings.showAdminButtons !== false;
 
   // palette
   const pal = $("palette"); pal.innerHTML = "";
@@ -269,6 +339,16 @@ $("saveBtn").onclick = async () => {
     showComments: $("s_comments").checked,
     showClock:    $("s_clock").checked,
     offlineGraceMin: parseInt($("s_grace").value,10) || 5,
+    skipEmptyWeeks: $("s_skip").checked,
+    layout: $("s_layout").value,
+    multiWeeks: parseInt($("s_mweeks").value,10) || 8,
+    multiCols: parseInt($("s_mcols").value,10) || 3,
+    startOffset: parseInt($("s_start").value,10) || 0,
+    semesterStart: $("s_semstart").value.trim(),
+    showNotes: $("s_notes").checked,
+    notesTitle: $("s_notesTitle").value.trim() || "Notes & Ideas",
+    notesHeightVh: parseInt($("s_notesH").value,10) || 24,
+    showAdminButtons: $("s_admin").checked,
     colors: readPalette(),
     theme,
     updatedBy: auth.currentUser.email,
