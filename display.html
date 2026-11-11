@@ -46,8 +46,8 @@
              width:min(640px,100%); padding:18px 20px; }
   #noteBox h3 { margin:0 0 10px; font-size:19px; }
   #noteText { width:100%; min-height:170px; font-size:17px; line-height:1.45;
-              padding:12px; border-radius:6px; border:1px solid var(--line);
-              background:var(--bg); color:var(--fg); resize:vertical;
+              padding:12px; border-radius:6px; border:1px solid #8fa6bd;
+              background:#ffffff; color:#102a43; resize:vertical;
               font-family:inherit; }
   #noteColors { display:flex; gap:8px; margin:12px 0; flex-wrap:wrap; }
   #noteColors button { width:34px; height:34px; border-radius:50%; border:2px solid
@@ -136,9 +136,13 @@
   .btn.small { padding:4px 9px; font-size:12px; margin:0; }
   .f label { display:block; font-size:12px; font-weight:600; color:var(--muted);
              margin:9px 0 2px; }
-  .f input, .f select { width:100%; padding:8px; border-radius:4px;
-                        border:1px solid var(--line); background:var(--bg);
-                        color:var(--fg); font-size:15px; }
+  /* Fields keep their own colours on purpose. Inheriting the board theme
+     meant a light background could end up with light text on it. */
+  .f input, .f select, .f textarea {
+      width:100%; padding:9px; border-radius:4px; border:1px solid #8fa6bd;
+      background:#ffffff; color:#102a43; font-size:16px; }
+  .f input::placeholder { color:#7a8794; }
+  .f select { appearance:auto; }
   .f .two { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
   #roomPick { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
   #roomPick label { display:inline-flex; align-items:center; gap:5px; margin:0;
@@ -156,7 +160,9 @@
   .stn b { font-size:14px; }
   .stn .tag { font-size:11px; color:var(--muted); margin-left:6px;
               text-transform:uppercase; letter-spacing:1px; }
-  .stn input { margin-top:5px; }
+  .stn input { margin-top:5px; background:#fff; color:#102a43;
+               border:1px solid #8fa6bd; border-radius:4px; padding:8px;
+               width:100%; font-size:15px; }
   .setup { border-left:5px solid var(--muted); background:var(--bg);
            border-radius:6px; padding:10px 12px; margin-bottom:8px; }
   .setup b { font-size:15px; }
@@ -165,8 +171,10 @@
   .stationline { display:block; font-size:13px; color:var(--muted);
                  margin-top:3px; }
   .itemrow { display:flex; gap:7px; align-items:center; margin-bottom:6px; }
-  .itemrow select { flex:1; }
-  .itemrow input { width:70px; }
+  .itemrow select { flex:1; background:#fff; color:#102a43;
+                    border:1px solid #8fa6bd; border-radius:4px; padding:8px; }
+  .itemrow input { width:74px; background:#fff; color:#102a43;
+                   border:1px solid #8fa6bd; border-radius:4px; padding:8px; }
   .avail { font-size:12px; margin-left:2px; white-space:nowrap; }
   .avail.ok { color:#8fe0a0; }
   .avail.over { color:#ff9e9e; font-weight:700; }
@@ -698,15 +706,32 @@ function openPopup(title, key, bodyHtml) {
     (note.text ? "<div id='cardNote'>" + esc(note.text) + "</div>" : "");
   overlay.classList.add("on");
   wireActions();
+  setTimeout(startAutoClose, 0);   // after the body is in the DOM
 
   wasRotating = rotating;           // a wall board must return to the grid alone
   rotating = false;
+  startAutoClose();
+}
+
+// Nothing with a field in it ever times out. The countdown is for someone
+// who tapped a cell and walked away, not for someone mid-sentence.
+function isEditing() {
+  return !!document.querySelector("#cardBody input, #cardBody select, " +
+                                  "#cardBody textarea");
+}
+
+function startAutoClose() {
   clearTimeout(closeTimer); clearInterval(countdown);
-  let left = settings.popupSec || 30;
   const tip = document.getElementById("timeout");
+  if (isEditing()) { tip.textContent = ""; return; }
+  let left = settings.popupSec || 30;
   tip.textContent = "Closing in " + left + "s";
-  countdown = setInterval(() => { tip.textContent = "Closing in " + (--left) + "s"; }, 1000);
-  closeTimer = setTimeout(closePopup, (settings.popupSec || 30) * 1000);
+  countdown = setInterval(() => {
+    if (isEditing()) { stopTimers(); return; }   // a field appeared — stand down
+    tip.textContent = "Closing in " + (--left) + "s";
+  }, 1000);
+  closeTimer = setTimeout(() => { if (!isEditing()) closePopup(); },
+                          (settings.popupSec || 30) * 1000);
 }
 
 function closePopup() {
