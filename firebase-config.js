@@ -54,6 +54,8 @@ export const DEFAULT_SETTINGS = {
   showNotes: true,
   notesTitle: "Notes & Ideas",
   notesHeightVh: 24,
+  noteCardHeight: 150,
+  noteCardWidth: 240,
   fitToScreen: true,
   logoUrl: "",
   watermarkUrl: "",
