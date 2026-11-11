@@ -23,6 +23,14 @@
   dialog label { display:block; margin:8px 0 2px; font-size:12px; font-weight:600; }
   dialog input, dialog select { width:100%; padding:7px; border:1px solid #c7d4e3;
                                 border-radius:4px; }
+  #roomPick { display:flex; flex-wrap:wrap; gap:5px; margin-top:4px; }
+  #roomPick label { display:inline-flex; align-items:center; gap:4px; margin:0;
+                    border:1px solid #c7d4e3; border-radius:5px; padding:5px 8px;
+                    font-size:12px; font-weight:500; cursor:pointer; }
+  #roomPick label.on { background:#1f3864; color:#fff; border-color:#1f3864; }
+  #roomPick input { width:auto; }
+  #quickPick { display:flex; gap:5px; margin-top:6px; flex-wrap:wrap; }
+  #quickPick button { padding:3px 8px; font-size:11px; }
   #login { max-width:320px; margin:60px auto; background:#fff; padding:24px;
            border-radius:8px; }
 </style>
@@ -52,6 +60,9 @@
 
 <dialog id="dlg">
   <h3 id="dlgTitle"></h3>
+  <label>Rooms for this event</label>
+  <div id="roomPick"></div>
+  <div id="quickPick"></div>
   <label>Course / group</label><input id="f_course">
   <label>Block</label><input id="f_block" placeholder="AM, PM, 13:00-16:00">
   <label>Instructor</label><input id="f_inst">
@@ -172,6 +183,32 @@ function openDialog(date, roomId, b) {
   $("f_setup").value  = b ? (b.setup||"") : "";
   $("f_color").value  = b ? (b.color||Object.keys(COLORS_LIVE)[0]) : Object.keys(COLORS_LIVE)[0];
   $("f_status").value = b ? (b.status||"confirmed") : "confirmed";
+  // room picker — one event can cover several rooms at once
+  const picked = b ? [b.roomId] : [roomId];
+  $("roomPick").innerHTML = rooms.map(r =>
+    "<label class='" + (picked.includes(r.id) ? "on" : "") + "'>" +
+    "<input type='checkbox' class='rm' value='" + r.id + "'" +
+    (picked.includes(r.id) ? " checked" : "") + ">" + r.label + "</label>").join("");
+  const groups = [...new Set(rooms.map(r => r.group))];
+  $("quickPick").innerHTML = groups.map(g =>
+      "<button type='button' class='ghost qp' data-g='" + g + "'>" +
+      (g||"other") + "</button>").join("") +
+    "<button type='button' class='ghost qp' data-g='*'>All</button>" +
+    "<button type='button' class='ghost qp' data-g='-'>None</button>";
+  const sync = l => l.classList.toggle("on", l.querySelector("input").checked);
+  $("roomPick").querySelectorAll("label").forEach(l =>
+    l.querySelector("input").onchange = () => sync(l));
+  $("quickPick").querySelectorAll(".qp").forEach(btn => btn.onclick = () => {
+    const g = btn.dataset.g;
+    $("roomPick").querySelectorAll("label").forEach(l => {
+      const rm = rooms.find(r => r.id === l.querySelector("input").value);
+      if (g === "*") l.querySelector("input").checked = true;
+      else if (g === "-") l.querySelector("input").checked = false;
+      else if (rm.group === g) l.querySelector("input").checked = true;
+      sync(l);
+    });
+  });
+
   $("del").style.display = b ? "inline-block" : "none";
   $("dlg").showModal();
 }
@@ -189,8 +226,20 @@ $("save").onclick = async () => {
     setup: $("f_setup").value.trim(),
     updatedBy: auth.currentUser.email, updatedAt: serverTimestamp()
   };
-  if (editing.id) await updateDoc(doc(db,"bookings",editing.id), data);
-  else            await addDoc(collection(db,"bookings"), data);
+  const chosen = [...document.querySelectorAll("#roomPick input:checked")]
+                   .map(i => i.value);
+  if (!chosen.length) { alert("Pick at least one room."); return; }
+  const gid = chosen.length > 1 ? "g" + Date.now().toString(36) : null;
+
+  if (editing.id) {
+    await updateDoc(doc(db,"bookings",editing.id),
+      Object.assign({}, data, {roomId: chosen[0], groupId: gid}));
+  }
+  for (const rid of chosen) {
+    if (editing.id && rid === chosen[0]) continue;
+    await addDoc(collection(db,"bookings"),
+      Object.assign({}, data, {roomId: rid, groupId: gid}));
+  }
   $("dlg").close(); load();
 };
 
