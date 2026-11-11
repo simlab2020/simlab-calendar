@@ -140,6 +140,39 @@
                         border:1px solid var(--line); background:var(--bg);
                         color:var(--fg); font-size:15px; }
   .f .two { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
+  #roomPick { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+  #roomPick label { display:inline-flex; align-items:center; gap:5px; margin:0;
+                    border:1px solid var(--line); border-radius:6px;
+                    padding:7px 10px; font-size:14px; color:var(--fg);
+                    cursor:pointer; user-select:none; }
+  #roomPick label.on { background:#1f3864; border-color:#4f9ad6; }
+  #roomPick input { width:auto; }
+  #quickPick { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 0; }
+  #quickPick button { font-size:12px; padding:4px 9px; }
+  #stationBlock { margin-top:12px; border-top:1px solid var(--line);
+                  padding-top:10px; }
+  .stn { border:1px solid var(--line); border-radius:7px; padding:9px 11px;
+         margin-bottom:8px; }
+  .stn b { font-size:14px; }
+  .stn .tag { font-size:11px; color:var(--muted); margin-left:6px;
+              text-transform:uppercase; letter-spacing:1px; }
+  .stn input { margin-top:5px; }
+  .setup { border-left:5px solid var(--muted); background:var(--bg);
+           border-radius:6px; padding:10px 12px; margin-bottom:8px; }
+  .setup b { font-size:15px; }
+  .setup .sk { color:var(--fg); }
+  .setup .sup { color:var(--note); font-size:14px; display:block; margin-top:3px; }
+  .stationline { display:block; font-size:13px; color:var(--muted);
+                 margin-top:3px; }
+  .itemrow { display:flex; gap:7px; align-items:center; margin-bottom:6px; }
+  .itemrow select { flex:1; }
+  .itemrow input { width:70px; }
+  .avail { font-size:12px; margin-left:2px; white-space:nowrap; }
+  .avail.ok { color:#8fe0a0; }
+  .avail.over { color:#ff9e9e; font-weight:700; }
+  .itemchip { display:inline-block; background:var(--bg); border:1px solid var(--line);
+              border-radius:12px; padding:2px 9px; font-size:12px; margin:3px 4px 0 0; }
+  .itemchip.over { border-color:#ff9e9e; color:#ff9e9e; }
   .entryhead { display:flex; align-items:center; gap:8px; }
   .entryhead h3 { flex:1; }
 </style>
@@ -438,6 +471,37 @@ function weekHasBookings(off) {
   });
 }
 
+/* ---------- equipment inventory ---------- */
+let inventory = [];
+
+onSnapshot(collection(db,"inventory"), snap => {
+  const fromCache = noteSnapshot(snap);
+  if (fromCache && snap.empty && inventory.length) return;
+  inventory = snap.docs.map(d => ({id:d.id, ...d.data()}))
+                  .sort((a,b) => (a.name||"").localeCompare(b.name||""));
+  render();
+}, err => console.error("inventory listener:", err));
+
+const itemById = id => inventory.find(i => i.id === id) || {name:id, qty:0};
+
+// Every reservation of one item on one date, with where it is going.
+function itemUsage(itemId, date, ignoreBookingId) {
+  const out = [];
+  bookings.forEach(b => {
+    if (b.date !== date || b.id === ignoreBookingId) return;
+    (b.items||[]).forEach(x => {
+      if (x.id === itemId)
+        out.push({ qty: x.qty || 1, roomId: b.roomId, course: b.course,
+                   block: b.block, station: x.station || "" });
+    });
+  });
+  return out;
+}
+function itemBooked(itemId, date, ignoreBookingId) {
+  return itemUsage(itemId, date, ignoreBookingId)
+           .reduce((n,u) => n + (u.qty||1), 0);
+}
+
 /* ---------- brainstorm notes ---------- */
 let boardNotes = [], editingNote = null, noteColor = "yellow";
 
@@ -576,7 +640,32 @@ function entryHtml(b, showRoom) {
             (over ? "<span class='flag over'>OVER CAPACITY</span>" : "") + "</dd>";
   }
   add("Contact", b.contact);
+  if (b.groupId) {
+    const others = bookings.filter(x => x.groupId === b.groupId && x.id !== b.id)
+                           .map(x => roomLabel(x.roomId));
+    if (others.length) add("Also in", others.join(", "));
+  }
   add("Setup", b.setup);
+  let stn = "";
+  if (b.stations && b.stations.length) {
+    stn = "<div style='margin-top:8px'>" + b.stations.map(x =>
+      "<span class='stationline'><b style='color:var(--fg)'>" + esc(x.label) +
+      "</b>" + (x.skill ? " — " + esc(x.skill) : "") +
+      (x.supplies ? "<br><span style='color:var(--note)'>" + esc(x.supplies) +
+       "</span>" : "") + "</span>").join("") + "</div>";
+  }
+  let itm = "";
+  if (b.items && b.items.length) {
+    itm = "<div>" + b.items.map(x => {
+      const inv = itemById(x.id);
+      const over = itemBooked(x.id, b.date) > (inv.qty || 0);
+      return "<span class='itemchip" + (over ? " over" : "") + "'>" +
+        esc(inv.name || x.name || x.id) +
+        ((x.qty||1) > 1 ? " \u00d7" + x.qty : "") +
+        (x.station ? " @ " + esc(x.station) : "") +
+        (over ? " \u26a0" : "") + "</span>";
+    }).join("") + "</div>";
+  }
   const editBtn = user
     ? "<button class='btn ghost small edit-one' data-id='" + b.id + "'>Edit</button>"
     : "";
@@ -586,7 +675,7 @@ function entryHtml(b, showRoom) {
          (b.status === "tentative" ? "<span class='flag'>TENTATIVE</span>" : "") +
          "</h3>" + editBtn + "</div>" +
          "<div class='when'>" + (b.block ? esc(b.block) : "Time not set") +
-         "</div>" + (rows ? "<dl class='kv'>" + rows + "</dl>" : "") + "</div>";
+         "</div>" + (rows ? "<dl class='kv'>" + rows + "</dl>" : "") + stn + itm + "</div>";
 }
 
 function openPopup(title, key, bodyHtml) {
@@ -625,8 +714,83 @@ function openRoom(key, roomId) {
     + "<div id='acts'>" + (user
         ? "<button class='btn' id='addOne'>+ Add booking</button>"
         : "<button class='btn ghost' id='needLogin'>Sign in to edit</button>")
+      + "<button class='btn ghost' id='setupSheet'>Room setup sheet</button>"
       + "</div>";
   openPopup("Room " + roomLabel(roomId), key, body);
+}
+
+// Everything that has to be physically set up in one room on one day,
+// station by station. This is the view to read before touching the room.
+function setupSheet(key, roomId) {
+  stopTimers();
+  const room = rooms.find(r => r.id === roomId) || {};
+  const list = bookings.filter(b => b.date === key && b.roomId === roomId);
+  const stations = room.stations || [];
+
+  let body = "";
+  if (!stations.length) {
+    body = "<p class='empty'>No beds or tables are set up for this room yet. " +
+           "Add them under the gear icon, in Rooms.</p>";
+  } else {
+    body = stations.map(st => {
+      const uses = [];
+      list.forEach(b => (b.stations||[]).forEach(x => {
+        if (x.id === st.id && (x.skill || x.supplies))
+          uses.push({ course:b.course, block:b.block, skill:x.skill,
+                      supplies:x.supplies, color:b.color });
+      }));
+      if (!uses.length) {
+        return "<div class='setup' style='border-left-color:" +
+          (colors.grey||"#7a8794") + "'><b>" + esc(st.label) + "</b> " +
+          "<span class='tag'>" + esc(st.type||"") + "</span>" +
+          "<span class='sup' style='color:var(--muted)'>Nothing assigned</span></div>";
+      }
+      return uses.map(u =>
+        "<div class='setup' style='border-left-color:" +
+        (colors[u.color]||colors.grey||"#7a8794") + "'>" +
+        "<b>" + esc(st.label) + "</b> <span class='tag'>" + esc(st.type||"") +
+        "</span><span class='sk'> — " + esc(u.skill || u.course || "") +
+        (u.block ? " (" + esc(u.block) + ")" : "") + "</span>" +
+        (u.supplies ? "<span class='sup'>" + esc(u.supplies) + "</span>" : "") +
+        "</div>").join("");
+    }).join("");
+  }
+  body += "<div id='acts'><button class='btn ghost' id='backRoom'>Back</button></div>";
+  openPopup("Setup — " + (room.label||roomId), key, body);
+  const back = document.getElementById("backRoom");
+  if (back) back.onclick = () => openRoom(key, roomId);
+}
+
+function equipmentDay(key) {
+  stopTimers();
+  let body = "";
+  if (!inventory.length) {
+    body = "<p class='empty'>No equipment listed yet.</p>";
+  } else {
+    body = inventory.map(it => {
+      const uses = itemUsage(it.id, key);
+      const used = uses.reduce((n,u) => n + (u.qty||1), 0);
+      const free = (it.qty||0) - used;
+      const over = free < 0;
+      const colour = over ? "#ff9e9e" : used ? "#e0b36a" : (colors.grey||"#7a8794");
+      let where = uses.map(u =>
+        "<span class='stationline'>" + esc(roomLabel(u.roomId)) +
+        (u.station ? " / " + esc(u.station) : "") +
+        (u.course ? " — " + esc(u.course) : "") +
+        (u.block ? " (" + esc(u.block) + ")" : "") +
+        ((u.qty||1) > 1 ? "  \u00d7" + u.qty : "") + "</span>").join("");
+      if (!uses.length) where = "<span class='stationline'>Not in use</span>";
+      return "<div class='setup' style='border-left-color:" + colour + "'>" +
+        "<b>" + esc(it.name) + "</b> " +
+        "<span class='tag'>" + used + " of " + (it.qty||0) + " in use" +
+        (over ? " — OVERBOOKED" : free > 0 ? " \u00b7 " + free + " free" : "") +
+        "</span>" + where + "</div>";
+    }).join("");
+  }
+  body += "<div id='acts'><button class='btn ghost' id='backDay'>Back</button></div>";
+  openPopup("Equipment", key, body);
+  const back = document.getElementById("backDay");
+  if (back) back.onclick = () => openDay(key);
 }
 
 function openDay(key) {
@@ -638,11 +802,14 @@ function openDay(key) {
   const list = bookings.filter(b => b.date === key)
     .sort((a,b) => rooms.findIndex(r => r.id === a.roomId) -
                    rooms.findIndex(r => r.id === b.roomId));
-  openPopup("Whole day", key, list.length
+  openPopup("Whole day", key, (list.length
     ? "<p class='empty'>" + list.length + " bookings across " +
       new Set(list.map(b => b.roomId)).size + " rooms</p>" +
       list.map(b => entryHtml(b,true)).join("")
-    : "<p class='empty'>Nothing scheduled.</p>");
+    : "<p class='empty'>Nothing scheduled.</p>") +
+    "<div id='acts'><button class='btn ghost' id='equipDay'>Equipment this day</button></div>");
+  const eq = document.getElementById("equipDay");
+  if (eq) eq.onclick = () => equipmentDay(key);
 }
 
 document.getElementById("board").addEventListener("click", ev => {
@@ -678,6 +845,8 @@ function wireActions() {
   const need = document.getElementById("needLogin");
   if (add)  add.onclick  = () => editForm(null);
   if (need) need.onclick = () => signInForm();
+  const sheet = document.getElementById("setupSheet");
+  if (sheet) sheet.onclick = () => setupSheet(openCell.date, openCell.roomId);
   body.querySelectorAll(".edit-one").forEach(b => {
     b.onclick = () => editForm(bookings.find(x => x.id === b.dataset.id));
   });
@@ -708,8 +877,26 @@ function editForm(b) {
   const opts = Object.keys(colors).map(n =>
     "<option value='" + n + "'" +
     (b && b.color === n ? " selected" : "") + ">" + n + "</option>").join("");
+  const picked = b ? [b.roomId] : [openCell.roomId];
+  const roomBoxes = rooms.map(r =>
+    "<label class='" + (picked.includes(r.id) ? "on" : "") + "'>" +
+    "<input type='checkbox' class='rm' value='" + r.id + "'" +
+    (picked.includes(r.id) ? " checked" : "") + ">" + esc(r.label) + "</label>").join("");
+  const groups = [...new Set(rooms.map(r => r.group))];
+
   document.getElementById("cardBody").innerHTML =
     "<div class='f'>" +
+    "<label>Rooms for this event</label>" +
+    "<div id='roomPick'>" + roomBoxes + "</div>" +
+    "<div id='quickPick'>" +
+      groups.map(g => "<button class='btn ghost small qp' data-g='" + g +
+                      "'>" + (g||"other") + "</button>").join("") +
+      "<button class='btn ghost small qp' data-g='*'>All</button>" +
+      "<button class='btn ghost small qp' data-g='-'>None</button>" +
+    "</div>" +
+    (b && b.groupId
+      ? "<label style='margin-top:10px'><input type='checkbox' id='e_all'> " +
+        "Apply changes to every room in this event</label>" : "") +
     "<label>Course / group</label><input id='e_course' value='" +
       esc(b ? (b.course||"") : "") + "'>" +
     "<div class='two'>" +
@@ -723,8 +910,10 @@ function editForm(b) {
       "<div><label>Contact</label><input id='e_contact' value='" +
         esc(b ? (b.contact||"") : "") + "'></div>" +
     "</div>" +
-    "<label>Setup notes</label><input id='e_setup' value='" +
+    "<label>Setup notes (whole room)</label><input id='e_setup' value='" +
       esc(b ? (b.setup||"") : "") + "'>" +
+    "<div id='stationBlock'></div>" +
+    "<div id='itemBlock'></div>" +
     "<div class='two'>" +
       "<div><label>Color</label><select id='e_color'>" + opts + "</select></div>" +
       "<div><label>Status</label><select id='e_status'>" +
@@ -739,6 +928,116 @@ function editForm(b) {
       (b ? "<button class='btn danger' id='e_del'>Delete</button>" : "") +
     "</p></div>";
 
+  // station assignments for the room, when exactly one room is selected
+  function drawStations() {
+    const chosen = [...document.querySelectorAll("#roomPick input:checked")]
+                     .map(i => i.value);
+    const host = document.getElementById("stationBlock");
+    if (chosen.length !== 1) {
+      host.innerHTML = chosen.length > 1
+        ? "<p class='empty'>Station details are per room — save this, then open " +
+          "a single room to set up its beds and tables.</p>" : "";
+      return;
+    }
+    const room = rooms.find(r => r.id === chosen[0]) || {};
+    const list = room.stations || [];
+    if (!list.length) {
+      host.innerHTML = "<p class='empty'>No beds or tables set up for " +
+        esc(room.label||"") + " yet. Add them under the gear icon, in Rooms.</p>";
+      return;
+    }
+    const have = {};
+    ((b && b.stations) || []).forEach(x => have[x.id] = x);
+    host.innerHTML = "<label>What happens at each station</label>" +
+      list.map(st => {
+        const v = have[st.id] || {};
+        return "<div class='stn'><b>" + esc(st.label) + "</b>" +
+          "<span class='tag'>" + esc(st.type||"") + "</span>" +
+          "<input class='st_skill' data-id='" + st.id + "' data-label='" +
+            esc(st.label) + "' data-type='" + esc(st.type||"") +
+            "' placeholder='Skill at this station' value='" +
+            esc(v.skill||"") + "'>" +
+          "<input class='st_sup' data-id='" + st.id +
+            "' placeholder='Supplies needed' value='" + esc(v.supplies||"") + "'>" +
+          "</div>";
+      }).join("");
+  }
+
+  // equipment reservations for this booking
+  let itemRows = (b && b.items) ? JSON.parse(JSON.stringify(b.items)) : [];
+  function drawItems() {
+    const host = document.getElementById("itemBlock");
+    if (!inventory.length) {
+      host.innerHTML = "<p class='empty'>No equipment listed yet. " +
+        "Add items under the gear icon, in Equipment inventory.</p>";
+      return;
+    }
+    const chosen = [...document.querySelectorAll("#roomPick input:checked")]
+                     .map(i => i.value);
+    const room = rooms.find(r => r.id === chosen[0]) || {};
+    const stations = room.stations || [];
+
+    host.innerHTML = "<label>Equipment reserved</label>" +
+      itemRows.map((row,i) => {
+        const inv = itemById(row.id);
+        const other = itemBooked(row.id, openCell.date, b ? b.id : null);
+        const total = other + (row.qty || 1) * Math.max(1, chosen.length);
+        const over  = total > (inv.qty || 0);
+        return "<div class='itemrow'>" +
+          "<select class='it_id' data-i='" + i + "'>" +
+            inventory.map(it => "<option value='" + it.id + "'" +
+              (it.id === row.id ? " selected" : "") + ">" + esc(it.name) +
+              " (" + (it.qty||0) + ")</option>").join("") +
+          "</select>" +
+          "<input type='number' min='1' class='it_qty' data-i='" + i +
+            "' value='" + (row.qty||1) + "'>" +
+          (stations.length
+            ? "<select class='it_st' data-i='" + i + "'><option value=''>— station —</option>" +
+              stations.map(st => "<option value='" + esc(st.label) + "'" +
+                (row.station === st.label ? " selected" : "") + ">" +
+                esc(st.label) + "</option>").join("") + "</select>"
+            : "") +
+          "<span class='avail " + (over ? "over" : "ok") + "'>" +
+            total + " of " + (inv.qty||0) + (over ? " — OVERBOOKED" : " that day") +
+          "</span>" +
+          "<button class='btn ghost small it_del' data-i='" + i + "'>&times;</button>" +
+          "</div>";
+      }).join("") +
+      "<button class='btn ghost small' id='itAdd'>+ Reserve equipment</button>";
+
+    host.querySelectorAll(".it_id").forEach(e => e.onchange = () => {
+      itemRows[+e.dataset.i].id = e.value; drawItems(); });
+    host.querySelectorAll(".it_qty").forEach(e => e.onchange = () => {
+      itemRows[+e.dataset.i].qty = parseInt(e.value,10) || 1; drawItems(); });
+    host.querySelectorAll(".it_st").forEach(e => e.onchange = () => {
+      itemRows[+e.dataset.i].station = e.value; });
+    host.querySelectorAll(".it_del").forEach(e => e.onclick = () => {
+      itemRows.splice(+e.dataset.i,1); drawItems(); });
+    const add = document.getElementById("itAdd");
+    if (add) add.onclick = () => {
+      itemRows.push({ id: inventory[0].id, qty: 1, station: "" }); drawItems(); };
+  }
+
+  const pick = document.getElementById("roomPick");
+  const sync = el => el.classList.toggle("on", el.querySelector("input").checked);
+  pick.querySelectorAll("label").forEach(l => {
+    l.querySelector("input").onchange = () => { sync(l); drawStations(); drawItems(); };
+  });
+  drawStations();
+  drawItems();
+  document.querySelectorAll(".qp").forEach(btn => btn.onclick = () => {
+    const g = btn.dataset.g;
+    pick.querySelectorAll("label").forEach(l => {
+      const id = l.querySelector("input").value;
+      const room = rooms.find(r => r.id === id);
+      const want = g === "*" ? true : g === "-" ? false : (room.group === g);
+      if (g === "*" || g === "-") l.querySelector("input").checked = want;
+      else if (want) l.querySelector("input").checked = true;
+      sync(l);
+    });
+    drawStations();
+  });
+
   document.getElementById("e_cancel").onclick =
     () => openRoom(openCell.date, openCell.roomId);
 
@@ -752,15 +1051,67 @@ function editForm(b) {
       color: v("e_color"), status: v("e_status"),
       updatedBy: user.email, updatedAt: serverTimestamp()
     };
-    if (b) await updateDoc(doc(db,"bookings",b.id), data);
-    else   await addDoc(collection(db,"bookings"), data);
-    openRoom(openCell.date, openCell.roomId);
+
+    const stns = [...document.querySelectorAll(".st_skill")].map(i => ({
+      id: i.dataset.id, label: i.dataset.label, type: i.dataset.type,
+      skill: i.value.trim(),
+      supplies: (document.querySelector(".st_sup[data-id='" + i.dataset.id + "']")
+                 || {value:""}).value.trim()
+    })).filter(x => x.skill || x.supplies);
+    if (stns.length || (b && b.stations)) data.stations = stns;
+
+    const items = itemRows.filter(r => r.id).map(r => ({
+      id: r.id, name: itemById(r.id).name, qty: r.qty || 1,
+      station: r.station || ""
+    }));
+    if (items.length || (b && b.items)) data.items = items;
+    const chosen = [...document.querySelectorAll("#roomPick input:checked")]
+                     .map(i => i.value);
+    if (!chosen.length) { alert("Pick at least one room."); return; }
+
+    // One event across several rooms is stored as one booking per room,
+    // tied together by a shared groupId so it can be edited or removed
+    // as a unit later.
+    const gid = (b && b.groupId) || (chosen.length > 1
+                  ? "g" + Date.now().toString(36) : null);
+
+    const applyAll = document.getElementById("e_all");
+    if (b && applyAll && applyAll.checked && b.groupId) {
+      const sibs = bookings.filter(x => x.groupId === b.groupId);
+      for (const sib of sibs)
+        await updateDoc(doc(db,"bookings",sib.id),
+          Object.assign({}, data, {roomId: sib.roomId, groupId: gid}));
+    } else if (b) {
+      await updateDoc(doc(db,"bookings",b.id),
+        Object.assign({}, data, {roomId: chosen[0], groupId: gid}));
+    }
+
+    // Any newly ticked room that has no booking in this event yet.
+    const already = b
+      ? bookings.filter(x => x.groupId && x.groupId === b.groupId)
+                .map(x => x.roomId).concat([b.roomId])
+      : [];
+    for (const rid of chosen) {
+      if (b && (already.includes(rid) || rid === chosen[0])) continue;
+      await addDoc(collection(db,"bookings"),
+        Object.assign({}, data, {roomId: rid, groupId: gid}));
+    }
+    openRoom(openCell.date, chosen.includes(openCell.roomId)
+             ? openCell.roomId : chosen[0]);
   };
 
   const del = document.getElementById("e_del");
   if (del) del.onclick = async () => {
-    if (!confirm("Delete this booking?")) return;
-    await deleteDoc(doc(db,"bookings",b.id));
+    const sibs = b.groupId ? bookings.filter(x => x.groupId === b.groupId) : [b];
+    const msg = sibs.length > 1
+      ? "Delete this booking from all " + sibs.length + " rooms?\n\n" +
+        "Cancel to delete only " + roomLabel(b.roomId) + "."
+      : "Delete this booking?";
+    if (confirm(msg)) {
+      for (const sib of sibs) await deleteDoc(doc(db,"bookings",sib.id));
+    } else if (sibs.length > 1) {
+      await deleteDoc(doc(db,"bookings",b.id));
+    } else { return; }
     openRoom(openCell.date, openCell.roomId);
   };
 }
