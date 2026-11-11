@@ -171,6 +171,8 @@
   .stationline { display:block; font-size:13px; color:var(--muted);
                  margin-top:3px; }
   .itemrow { display:flex; gap:7px; align-items:center; margin-bottom:6px; }
+  .itemrow select.sx_type { flex:none; width:132px; }
+  .itemrow input.sx_label { flex:1; width:auto; }
   .itemrow select { flex:1; background:#fff; color:#102a43;
                     border:1px solid #8fa6bd; border-radius:4px; padding:8px; }
   .itemrow input { width:74px; background:#fff; color:#102a43;
@@ -857,8 +859,12 @@ function stationEditor(key, roomId) {
     });
     document.getElementById("sx_cancel").onclick = () => setupSheet(key, roomId);
     document.getElementById("sx_save").onclick = async () => {
-      await updateDoc(doc(db,"rooms",roomId),
-        { stations: draft.filter(x => (x.label||"").trim()) });
+      const clean = draft.filter(x => (x.label||"").trim());
+      await updateDoc(doc(db,"rooms",roomId), { stations: clean });
+      // Update our local copy right away. The listener will confirm it a
+      // moment later, but the popup repaints now and must not read stale data.
+      const local = rooms.find(r => r.id === roomId);
+      if (local) local.stations = clean;
       setupSheet(key, roomId);
     };
   }
@@ -1037,30 +1043,63 @@ function editForm(b) {
       (b ? "<button class='btn danger' id='e_del'>Delete</button>" : "") +
     "</p></div>";
 
-  // station assignments for the room, when exactly one room is selected
-  function drawStations() {
+  // Station assignments live per room, so an event across several rooms
+  // keeps a separate setup for each one.
+  const stationsByRoom = {};
+  if (b && b.stations) stationsByRoom[b.roomId] = JSON.parse(JSON.stringify(b.stations));
+  if (b && b.groupId) {
+    bookings.filter(x => x.groupId === b.groupId && x.stations)
+            .forEach(x => stationsByRoom[x.roomId] =
+                            JSON.parse(JSON.stringify(x.stations)));
+  }
+  let stnTab = b ? b.roomId : openCell.roomId;
+
+  function readStationInputs() {
+    const host = document.getElementById("stationBlock");
+    if (!host || !host.querySelector(".st_skill")) return;
+    stationsByRoom[stnTab] = [...host.querySelectorAll(".st_skill")].map(i => ({
+      id: i.dataset.id, label: i.dataset.label, type: i.dataset.type,
+      skill: i.value.trim(),
+      supplies: (host.querySelector(".st_sup[data-id='" + i.dataset.id + "']")
+                 || {value:""}).value.trim()
+    }));
+  }
+
+  function drawStations(keepInputs) {
+    if (keepInputs !== false) readStationInputs();
     const chosen = [...document.querySelectorAll("#roomPick input:checked")]
                      .map(i => i.value);
     const host = document.getElementById("stationBlock");
-    if (chosen.length !== 1) {
-      host.innerHTML = chosen.length > 1
-        ? "<p class='empty'>Station details are per room — save this, then open " +
-          "a single room to set up its beds and tables.</p>" : "";
-      return;
-    }
-    const room = rooms.find(r => r.id === chosen[0]) || {};
+    if (!chosen.length) { host.innerHTML = ""; return; }
+    if (!chosen.includes(stnTab)) stnTab = chosen[0];
+
+    const tabs = chosen.length > 1
+      ? "<div id='quickPick' style='margin-bottom:8px'>" +
+        chosen.map(id => "<button class='btn " +
+          (id === stnTab ? "" : "ghost") + " small stn_tab' data-id='" + id +
+          "'>" + esc(roomLabel(id)) + "</button>").join("") +
+        "<button class='btn ghost small' id='stn_copy' " +
+          "title='Use this room&apos;s setup for every room in this event'>" +
+          "Same for all rooms</button></div>"
+      : "";
+
+    const room = rooms.find(r => r.id === stnTab) || {};
     const list = room.stations || [];
     if (!list.length) {
-      host.innerHTML = "<label>Stations</label><p class='empty'>No beds or " +
-        "tables set up for " + esc(room.label||"") + " yet. " +
+      host.innerHTML = "<label>Stations</label>" + tabs +
+        "<p class='empty'>No beds or tables set up for " +
+        esc(room.label||"") + " yet. " +
         "<button class='btn ghost small' id='stnShortcut'>Set them up now</button></p>";
+      wireStationTabs();
       const sc = document.getElementById("stnShortcut");
-      if (sc) sc.onclick = () => stationEditor(openCell.date, chosen[0]);
+      if (sc) sc.onclick = () => stationEditor(openCell.date, stnTab);
       return;
     }
+
     const have = {};
-    ((b && b.stations) || []).forEach(x => have[x.id] = x);
-    host.innerHTML = "<label>What happens at each station</label>" +
+    (stationsByRoom[stnTab] || []).forEach(x => have[x.id] = x);
+    host.innerHTML = "<label>What happens at each station" +
+      (chosen.length > 1 ? " — " + esc(room.label||"") : "") + "</label>" + tabs +
       list.map(st => {
         const v = have[st.id] || {};
         return "<div class='stn'><b>" + esc(st.label) + "</b>" +
@@ -1073,6 +1112,34 @@ function editForm(b) {
             "' placeholder='Supplies needed' value='" + esc(v.supplies||"") + "'>" +
           "</div>";
       }).join("");
+    wireStationTabs();
+  }
+
+  function wireStationTabs() {
+    document.querySelectorAll(".stn_tab").forEach(t => t.onclick = () => {
+      readStationInputs();
+      stnTab = t.dataset.id;
+      drawStations(false);
+    });
+    const copy = document.getElementById("stn_copy");
+    if (copy) copy.onclick = () => {
+      readStationInputs();
+      const src = stationsByRoom[stnTab] || [];
+      const chosen = [...document.querySelectorAll("#roomPick input:checked")]
+                       .map(i => i.value);
+      chosen.forEach(rid => {
+        if (rid === stnTab) return;
+        const target = (rooms.find(r => r.id === rid) || {}).stations || [];
+        // Match by position, since bed 1 in one room is bed 1 in the next.
+        stationsByRoom[rid] = target.map((st,i) => ({
+          id: st.id, label: st.label, type: st.type,
+          skill: (src[i]||{}).skill || "", supplies: (src[i]||{}).supplies || ""
+        }));
+      });
+      alert("Copied this setup to the other " + (chosen.length-1) + " room(s). " +
+            "Stations are matched in order, so check rooms with different layouts.");
+      drawStations(false);
+    };
   }
 
   // equipment reservations for this booking
@@ -1170,13 +1237,9 @@ function editForm(b) {
       updatedBy: user.email, updatedAt: serverTimestamp()
     };
 
-    const stns = [...document.querySelectorAll(".st_skill")].map(i => ({
-      id: i.dataset.id, label: i.dataset.label, type: i.dataset.type,
-      skill: i.value.trim(),
-      supplies: (document.querySelector(".st_sup[data-id='" + i.dataset.id + "']")
-                 || {value:""}).value.trim()
-    })).filter(x => x.skill || x.supplies);
-    if (stns.length || (b && b.stations)) data.stations = stns;
+    readStationInputs();
+    const stationsFor = rid =>
+      (stationsByRoom[rid] || []).filter(x => x.skill || x.supplies);
 
     const items = itemRows.filter(r => r.id).map(r => ({
       id: r.id, name: itemById(r.id).name, qty: r.qty || 1,
@@ -1198,10 +1261,12 @@ function editForm(b) {
       const sibs = bookings.filter(x => x.groupId === b.groupId);
       for (const sib of sibs)
         await updateDoc(doc(db,"bookings",sib.id),
-          Object.assign({}, data, {roomId: sib.roomId, groupId: gid}));
+          Object.assign({}, data, {roomId: sib.roomId, groupId: gid,
+                                   stations: stationsFor(sib.roomId)}));
     } else if (b) {
       await updateDoc(doc(db,"bookings",b.id),
-        Object.assign({}, data, {roomId: chosen[0], groupId: gid}));
+        Object.assign({}, data, {roomId: chosen[0], groupId: gid,
+                                 stations: stationsFor(chosen[0])}));
     }
 
     // Any newly ticked room that has no booking in this event yet.
@@ -1212,7 +1277,8 @@ function editForm(b) {
     for (const rid of chosen) {
       if (b && (already.includes(rid) || rid === chosen[0])) continue;
       await addDoc(collection(db,"bookings"),
-        Object.assign({}, data, {roomId: rid, groupId: gid}));
+        Object.assign({}, data, {roomId: rid, groupId: gid,
+                                 stations: stationsFor(rid)}));
     }
     openRoom(openCell.date, chosen.includes(openCell.roomId)
              ? openCell.roomId : chosen[0]);
