@@ -11,7 +11,14 @@
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
               font-family:"Segoe UI",system-ui,sans-serif; overflow:hidden; }
-  header { display:flex; align-items:baseline; gap:20px; padding:10px 18px; }
+  header { display:flex; align-items:center; gap:18px; padding:10px 18px; }
+  #logo { height:calc(2.6vw * var(--s)); max-height:70px; width:auto;
+          object-fit:contain; }
+  #logo[hidden] { display:none; }
+  #watermark { position:fixed; inset:0; pointer-events:none; z-index:0;
+               background-repeat:no-repeat; background-position:center 55%;
+               background-size:min(46vw,620px); opacity:0; }
+  header, #board, #notes, #offline { position:relative; z-index:1; }
   h1 { font-size:calc(2.1vw * var(--s)); margin:0; letter-spacing:1px; }
   #sub { font-size:calc(1.2vw * var(--s)); color:var(--muted); }
   #clock { margin-left:auto; font-size:calc(1.5vw * var(--s)); color:var(--muted); }
@@ -64,10 +71,19 @@
   #noteHint { font-size:12px; color:var(--muted); margin:10px 0 0; }
   #emptyWeek { padding:18px; color:var(--muted);
                font-size:calc(1.1vw * var(--s)); text-align:center; }
-  html,body.multi { overflow:auto; height:auto; }
-  #board { padding:0 10px 24px; }
+  html { background:var(--bg); }
+  body { display:flex; flex-direction:column; min-height:100%; }
+  body.multi { overflow:hidden; }
+  body.fit { height:100%; overflow:hidden; }
+  #board { padding:0 10px 10px; flex:1 1 auto; min-height:0; overflow:auto; }
+  body.fit #board { overflow:hidden; }
   #panels { display:grid; grid-template-columns:repeat(var(--cols,3), 1fr);
-            gap:14px; }
+            grid-auto-rows:1fr; gap:12px; }
+  body.fit #panels { height:100%; }
+  body.fit .panel { display:flex; flex-direction:column; min-height:0; }
+  body.fit .panel table { flex:1 1 auto; }
+  body.fit .panel td, body.fit .panel th { height:0; }
+  body.fit #board > table { height:100%; }
   .panel { border:1px solid var(--line); border-radius:8px; overflow:hidden;
            background:var(--panel); }
   .panel.now { outline:2px solid #4f9ad6; }
@@ -101,7 +117,11 @@
   .chip small { display:block; font-weight:400; opacity:.85; font-size:88%; }
   .tentative { opacity:.55; border:1px dashed #fff; }
   .banner { font-size:calc(1.6vw * var(--s)); letter-spacing:6px;
-            color:#ff9e9e; font-weight:700; }
+            color:#ff9e9e; font-weight:700; white-space:nowrap; }
+  .bannerimg { height:calc(2.2vw * var(--s)); max-height:46px; width:auto;
+               vertical-align:middle; margin:0 14px; }
+  .bannericon { font-size:calc(2.0vw * var(--s)); margin:0 14px;
+                letter-spacing:0; vertical-align:middle; }
   #offline { display:none; background:#8b1a1a; text-align:center; padding:8px;
              font-size:calc(1.2vw * var(--s)); font-weight:700; }
   .group-end { border-right:3px solid var(--divider); }
@@ -198,8 +218,10 @@
 </style>
 </head>
 <body>
+<div id="watermark"></div>
 <div id="offline">CONNECTION LOST - schedule may be out of date</div>
 <header>
+  <img id="logo" alt="" hidden>
   <h1 id="wkTitle">Loading...</h1>
   <div id="sub"></div>
   <div id="clock"></div>
@@ -328,6 +350,16 @@ function applyTheme() {
   document.getElementById("clock").className = settings.showClock ? "" : "hide";
   document.getElementById("admin").className =
     settings.showAdminButtons === false ? "hide" : "";
+
+  const logo = document.getElementById("logo");
+  if (settings.logoUrl) { logo.src = settings.logoUrl; logo.hidden = false; }
+  else { logo.hidden = true; }
+
+  const wm = document.getElementById("watermark");
+  wm.style.backgroundImage = settings.watermarkUrl
+    ? "url('" + settings.watermarkUrl + "')" : "none";
+  wm.style.opacity = settings.watermarkUrl
+    ? ((settings.watermarkOpacity || 8) / 100) : 0;
   if (offset >= (settings.weeks || 2)) offset = 0;
 }
 
@@ -357,6 +389,14 @@ onSnapshot(query(collection(db,"dayNotes"),
   render();
 }, err => console.error("dayNotes listener:", err));
 
+// A banner decoration: an emoji typed straight in, or an image URL.
+function bannerArt(icon) {
+  if (!icon) return "";
+  return /^https?:\/\/|^\.?\//.test(icon)
+    ? "<img class='bannerimg' src='" + esc(icon) + "' alt=''>"
+    : "<span class='bannericon'>" + esc(icon) + "</span>";
+}
+
 function weekLabel(off) {
   if (off === 0) return settings.title || "THIS WEEK";
   if (off === 1) return "NEXT WEEK";
@@ -385,7 +425,8 @@ function weekTableHTML(weekStart, opts) {
             "<br>" + (d.getMonth()+1) + "/" + d.getDate() + "</td>";
     if (note.banner) {
       html += "<td colspan='" + rooms.length + "' class='banner'>" +
-              esc(note.banner) + "</td>";
+              bannerArt(note.icon) + esc(note.banner) +
+              bannerArt(note.icon) + "</td>";
     } else {
       rooms.forEach((r,ri) => {
         const end = ri < rooms.length-1 && rooms[ri+1].group !== r.group;
@@ -418,6 +459,7 @@ function render() {
   if (!rooms.length) return;
   const multi = settings.layout === "multi";
   document.body.classList.toggle("multi", multi);
+  document.body.classList.toggle("fit", settings.fitToScreen !== false);
   return multi ? renderMulti() : renderSingle();
 }
 
@@ -430,6 +472,7 @@ function renderSingle() {
       {month:"long",day:"numeric",year:"numeric"});
 
   const host = document.getElementById("board");
+  host.style.removeProperty("--cols");
   host.innerHTML = weekTableHTML(weekStart, {compact:false});
 
   // Make an empty week unmistakable. Without this, rotating to a blank
@@ -933,6 +976,40 @@ function stationEditor(key, roomId) {
   paint();
 }
 
+// The Comments column, the full-width holiday banner, and its artwork.
+function dayNoteForm(key) {
+  if (!user) return;
+  stopTimers();
+  const n = notes[key] || {};
+  document.getElementById("cardBody").innerHTML =
+    "<div class='f'>" +
+    "<label>Comments (right-hand column)</label>" +
+    "<input id='dn_text' value='" + esc(n.text||"") +
+      "' placeholder='Marta out &middot; Lauren out @ 1:00'>" +
+    "<label>Full-width banner — leave blank for a normal day</label>" +
+    "<input id='dn_banner' value='" + esc(n.banner||"") +
+      "' placeholder='THANKSGIVING DAY'>" +
+    "<label>Banner decoration — an emoji, or an image file in the repo</label>" +
+    "<input id='dn_icon' value='" + esc(n.icon||"") +
+      "' placeholder='&#127790;  or  turkey.png'>" +
+    "<p style='margin-top:16px'>" +
+      "<button class='btn' id='dn_save'>Save</button>" +
+      "<button class='btn ghost' id='dn_cancel'>Cancel</button>" +
+    "</p></div>";
+  document.getElementById("cardRoom").textContent = "Day note";
+  document.getElementById("dn_cancel").onclick = () => openDay(key);
+  document.getElementById("dn_save").onclick = async () => {
+    const v = id => document.getElementById(id).value.trim();
+    await setDoc(doc(db,"dayNotes",key),
+      { date: key, text: v("dn_text"), banner: v("dn_banner"),
+        icon: v("dn_icon"), updatedBy: user.email });
+    notes[key] = { date:key, text:v("dn_text"), banner:v("dn_banner"),
+                   icon:v("dn_icon") };
+    render();
+    openDay(key);
+  };
+}
+
 function equipmentDay(key) {
   stopTimers();
   let body = "";
@@ -979,9 +1056,13 @@ function openDay(key) {
       new Set(list.map(b => b.roomId)).size + " rooms</p>" +
       list.map(b => entryHtml(b,true)).join("")
     : "<p class='empty'>Nothing scheduled.</p>") +
-    "<div id='acts'><button class='btn ghost' id='equipDay'>Equipment this day</button></div>");
+    "<div id='acts'>" +
+    (user ? "<button class='btn' id='editDayNote'>Comment &amp; banner</button>" : "") +
+    "<button class='btn ghost' id='equipDay'>Equipment this day</button></div>");
   const eq = document.getElementById("equipDay");
   if (eq) eq.onclick = () => equipmentDay(key);
+  const dn = document.getElementById("editDayNote");
+  if (dn) dn.onclick = () => dayNoteForm(key);
 }
 
 document.getElementById("board").addEventListener("click", ev => {
