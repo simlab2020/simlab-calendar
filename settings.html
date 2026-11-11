@@ -196,6 +196,10 @@
       <div>
         <label>Height on screen (% of screen height)</label>
         <input id="s_notesH" type="number" min="8" max="60">
+        <label>Note card width (px)</label>
+        <input id="s_ncw" type="number" min="140" max="500">
+        <label>Note card height (px)</label>
+        <input id="s_nch" type="number" min="80" max="400">
       </div>
     </div>
   </div>
@@ -327,6 +331,8 @@ function draw() {
   $("s_notes").checked    = settings.showNotes !== false;
   $("s_notesTitle").value = settings.notesTitle || "Notes & Ideas";
   $("s_notesH").value     = settings.notesHeightVh || 24;
+  $("s_ncw").value        = settings.noteCardWidth || 240;
+  $("s_nch").value        = settings.noteCardHeight || 150;
   $("s_logo").value       = settings.logoUrl || "";
   $("s_wm").value         = settings.watermarkUrl || "";
   $("s_wmo").value        = settings.watermarkOpacity != null
@@ -533,6 +539,8 @@ $("saveBtn").onclick = async () => {
     showNotes: $("s_notes").checked,
     notesTitle: $("s_notesTitle").value.trim() || "Notes & Ideas",
     notesHeightVh: parseInt($("s_notesH").value,10) || 24,
+    noteCardWidth: parseInt($("s_ncw").value,10) || 240,
+    noteCardHeight: parseInt($("s_nch").value,10) || 150,
     logoUrl: $("s_logo").value.trim(),
     watermarkUrl: $("s_wm").value.trim(),
     watermarkOpacity: parseInt($("s_wmo").value,10) || 0,
