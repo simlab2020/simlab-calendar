@@ -15,14 +15,29 @@
   #logo { height:calc(2.6vw * var(--s)); max-height:70px; width:auto;
           object-fit:contain; }
   #logo[hidden] { display:none; }
-  #watermark { position:fixed; inset:0; pointer-events:none; z-index:0;
-               background-repeat:no-repeat; background-position:center 55%;
-               background-size:min(46vw,620px); opacity:0; }
+  #watermark { display:none; }
+  /* Drawn on the board itself so it centres on the calendar, not the page,
+     and survives the grid being re-rendered. */
+  #board::before { content:""; position:absolute; inset:0; pointer-events:none;
+                   z-index:0; background-image:var(--wm, none);
+                   background-repeat:no-repeat; background-position:center center;
+                   background-size:var(--wmsize, 55%) auto;
+                   opacity:var(--wmop, 0); }
+  #board { position:relative; }
+  #board > * { position:relative; z-index:1; }
   header, #board, #notes, #offline { position:relative; z-index:1; }
   h1 { font-size:calc(2.1vw * var(--s)); margin:0; letter-spacing:1px; }
   #sub { font-size:calc(1.2vw * var(--s)); color:var(--muted); }
-  #clock { margin-left:auto; font-size:calc(1.5vw * var(--s)); color:var(--muted); }
+  #clock { font-size:calc(1.5vw * var(--s)); color:var(--muted); }
   #clock.hide, #sub.hide { display:none; }
+  #nav { display:flex; gap:6px; margin-left:auto; }
+  #nav button { background:transparent; border:1px solid var(--line);
+                color:var(--muted); border-radius:6px; cursor:pointer;
+                font-size:calc(1.0vw * var(--s)); padding:4px 13px;
+                font-weight:600; }
+  #nav button:hover { color:var(--fg); border-color:var(--muted); }
+  #nav.browsing button#todayWk { color:#8fe0a0; border-color:#8fe0a0; }
+  #clock { margin-left:14px; }
   #admin { display:flex; gap:6px; margin-left:14px; }
   #admin button { background:transparent; border:1px solid var(--line);
                   color:var(--muted); border-radius:6px; cursor:pointer;
@@ -268,6 +283,11 @@
   <h1 id="wkTitle">Loading...</h1>
   <div id="sub"></div>
   <div id="clock"></div>
+  <div id="nav">
+    <button id="prevWk" title="Previous week">&#8249;</button>
+    <button id="todayWk" title="Back to this week">Today</button>
+    <button id="nextWk" title="Next week">&#8250;</button>
+  </div>
   <div id="admin">
     <button id="print" title="Print this view">&#128424;</button>
     <button id="gear" title="Display settings">&#9881;</button>
@@ -340,6 +360,7 @@ let rooms = [], bookings = [], notes = {}, offset = 0, rotating = true;
 let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
 let colors = settings.colors;
 let lastData = Date.now(), lastFlip = Date.now();
+let browseShift = 0, browseAt = 0;   // weeks away from now, and when they asked
 let haveData = false, cacheSince = 0;
 
 // Firestore reports whether a snapshot came from the server or the local
@@ -404,16 +425,19 @@ function applyTheme() {
   document.getElementById("clock").className = settings.showClock ? "" : "hide";
   document.getElementById("admin").className =
     settings.showAdminButtons === false ? "hide" : "";
+  document.getElementById("nav").style.display =
+    settings.showNavButtons === false ? "none" : "flex";
 
   const logo = document.getElementById("logo");
   if (settings.logoUrl) { logo.src = settings.logoUrl; logo.hidden = false; }
   else { logo.hidden = true; }
 
-  const wm = document.getElementById("watermark");
-  wm.style.backgroundImage = settings.watermarkUrl
-    ? "url('" + settings.watermarkUrl + "')" : "none";
-  wm.style.opacity = settings.watermarkUrl
-    ? ((settings.watermarkOpacity || 8) / 100) : 0;
+  const bd = document.getElementById("board").style;
+  bd.setProperty("--wm", settings.watermarkUrl
+    ? "url('" + settings.watermarkUrl + "')" : "none");
+  bd.setProperty("--wmop", settings.watermarkUrl
+    ? ((settings.watermarkOpacity || 8) / 100) : 0);
+  bd.setProperty("--wmsize", (settings.watermarkSize || 55) + "%");
   if (offset >= (settings.weeks || 2)) offset = 0;
 }
 
@@ -454,8 +478,21 @@ function bannerArt(icon) {
 function weekLabel(off) {
   if (off === 0) return settings.title || "THIS WEEK";
   if (off === 1) return "NEXT WEEK";
-  return "WEEK OF";
+  if (off === -1) return "LAST WEEK";
+  return (off > 0 ? "IN " + off + " WEEKS" : off + " WEEKS AGO")
+         .replace("IN 1 WEEKS","NEXT WEEK");
 }
+
+// Paging is open to everyone -- reading the schedule should never need a login.
+function browse(n) {
+  if (n === 0) { browseShift = 0; browseAt = 0; }
+  else { browseShift += n; browseAt = Date.now(); }
+  document.getElementById("nav").className = browseShift ? "browsing" : "";
+  render();
+}
+document.getElementById("prevWk").onclick  = () => browse(-1);
+document.getElementById("nextWk").onclick  = () => browse(1);
+document.getElementById("todayWk").onclick = () => browse(0);
 
 // One week as a table. Used by both layouts.
 function weekTableHTML(weekStart, opts) {
@@ -518,8 +555,9 @@ function render() {
 }
 
 function renderSingle() {
-  const weekStart = addDays(base, offset*7);
-  document.getElementById("wkTitle").textContent = weekLabel(offset);
+  const off = offset + browseShift;
+  const weekStart = addDays(base, off*7);
+  document.getElementById("wkTitle").textContent = weekLabel(off);
   document.getElementById("sub").textContent =
     weekStart.toLocaleDateString(undefined,{month:"long",day:"numeric"}) + " - " +
     addDays(weekStart,6).toLocaleDateString(undefined,
@@ -546,7 +584,7 @@ function renderSingle() {
 
 function renderMulti() {
   const n     = Math.max(1, Math.min(26, settings.multiWeeks || 8));
-  const start = settings.startOffset || 0;
+  const start = (settings.startOffset || 0) + browseShift;
   const cols  = Math.max(1, Math.min(6, settings.multiCols || 3));
 
   const first = addDays(base, start*7);
@@ -1542,7 +1580,11 @@ document.getElementById("who").onclick = () => {
 
 /* ---------- rotation, clock, watchdog ---------- */
 setInterval(() => {
-  if (!rotating) return;
+  // Hand control back after a couple of minutes so the wall always
+  // ends up showing the current week again.
+  if (browseShift && Date.now() - browseAt > (settings.browseResetSec || 120) * 1000)
+    browse(0);
+  if (!rotating || browseShift) return;
   if (settings.layout === "multi") return;   // nothing to rotate in wall mode
   const every = (settings.rotateSec || 25) * 1000;
   if (Date.now() - lastFlip >= every) {
