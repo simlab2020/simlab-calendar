@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sim Lab - Week at a Glance</title>
+<meta name="build" content="2026-11-11-nav">
 <style>
   :root { color-scheme:dark; --bg:#0d1b2a; --panel:#152c42; --line:#2c4257;
           --fg:#fff; --muted:#8fb3cc; --today:#17334d; --note:#ffd9a0;
@@ -11,7 +12,9 @@
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
               font-family:"Segoe UI",system-ui,sans-serif; overflow:hidden; }
-  header { display:flex; align-items:center; gap:18px; padding:10px 18px; }
+  header { display:flex; align-items:center; gap:18px; padding:9px 16px;
+           background:var(--panel); color:var(--fg);
+           border-bottom:2px solid var(--line); }
   #logo { height:calc(2.6vw * var(--s)); max-height:70px; width:auto;
           object-fit:contain; }
   #logo[hidden] { display:none; }
@@ -26,7 +29,8 @@
   #board { position:relative; }
   #board > * { position:relative; z-index:1; }
   header, #board, #notes, #offline { position:relative; z-index:1; }
-  h1 { font-size:calc(2.1vw * var(--s)); margin:0; letter-spacing:1px; }
+  h1 { font-size:calc(2.1vw * var(--s)); margin:0; letter-spacing:1px;
+       color:var(--fg); white-space:nowrap; }
   #sub { font-size:calc(1.2vw * var(--s)); color:var(--muted); }
   #clock { font-size:calc(1.5vw * var(--s)); color:var(--muted); }
   #clock.hide, #sub.hide { display:none; }
@@ -355,6 +359,7 @@ const auth = getAuth(fbApp);
 let user = null;
 onAuthStateChanged(auth, u => { user = u; paintAuth(); });
 const DAYS = ["Mon","Tues","Wed","Thurs","Fri","Sat","Sun"];
+console.log("display.html build 2026-11-11-nav");
 
 let rooms = [], bookings = [], notes = {}, offset = 0, rotating = true;
 let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
