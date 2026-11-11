@@ -45,6 +45,16 @@ export const DEFAULT_SETTINGS = {
   showComments: true,
   showClock: true,
   offlineGraceMin: 5,
+  skipEmptyWeeks: true,
+  layout: "single",        // "single" = one week, rotating; "multi" = wall of weeks
+  multiWeeks: 8,           // how many weeks to show in multi layout
+  multiCols: 3,            // panels across
+  startOffset: 0,          // 0 = start at this week, -1 = last week, 2 = in two weeks
+  semesterStart: "2026-08-24",
+  showNotes: true,
+  notesTitle: "Notes & Ideas",
+  notesHeightVh: 24,
+  showAdminButtons: true,
   colors: COLORS,
   theme: {
     bg:      "#0d1b2a",
