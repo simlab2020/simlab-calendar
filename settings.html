@@ -93,6 +93,9 @@
         <label>Minutes offline before the warning banner shows</label>
         <input id="s_grace" type="number" min="1" max="60">
         <label><input type="checkbox" id="s_skip"> Skip empty weeks when rotating</label>
+        <label><input type="checkbox" id="s_nav"> Show the week arrows (anyone can browse)</label>
+        <label>Seconds before browsing snaps back to this week</label>
+        <input id="s_reset" type="number" min="15" max="900">
         <label><input type="checkbox" id="s_admin"> Show the gear and sign-in buttons on the board</label>
       </div>
     </div>
@@ -167,6 +170,8 @@
       <div>
         <label>Watermark strength (%)</label>
         <input id="s_wmo" type="number" min="0" max="60">
+        <label>Watermark size (% of the calendar width)</label>
+        <input id="s_wmsz" type="number" min="10" max="100">
         <label><input type="checkbox" id="s_fit"> Scale the board to fill the screen</label>
         <p class="hint" style="margin-top:8px">
           Holiday artwork — the turkey, a Christmas graphic — goes on a day
@@ -326,6 +331,9 @@ function draw() {
   $("s_wm").value         = settings.watermarkUrl || "";
   $("s_wmo").value        = settings.watermarkOpacity != null
                               ? settings.watermarkOpacity : 8;
+  $("s_wmsz").value       = settings.watermarkSize || 55;
+  $("s_nav").checked      = settings.showNavButtons !== false;
+  $("s_reset").value      = settings.browseResetSec || 120;
   $("s_fit").checked      = settings.fitToScreen !== false;
   $("s_admin").checked    = settings.showAdminButtons !== false;
 
@@ -528,6 +536,9 @@ $("saveBtn").onclick = async () => {
     logoUrl: $("s_logo").value.trim(),
     watermarkUrl: $("s_wm").value.trim(),
     watermarkOpacity: parseInt($("s_wmo").value,10) || 0,
+    watermarkSize: parseInt($("s_wmsz").value,10) || 55,
+    showNavButtons: $("s_nav").checked,
+    browseResetSec: parseInt($("s_reset").value,10) || 120,
     fitToScreen: $("s_fit").checked,
     showAdminButtons: $("s_admin").checked,
     colors: readPalette(),
