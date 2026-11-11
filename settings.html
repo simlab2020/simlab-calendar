@@ -41,6 +41,13 @@
   #preview { border-radius:8px; padding:14px; margin-top:10px; }
   #preview .pchip { display:inline-block; border-radius:3px; padding:4px 8px;
                     margin:3px; font-size:12px; font-weight:600; color:#fff; }
+  dialog { border:0; border-radius:10px; padding:20px; width:min(560px,94vw); }
+  dialog h3 { margin:0 0 4px; }
+  .st-row { display:flex; gap:8px; align-items:center; margin-bottom:7px; }
+  .st-row select { width:120px; }
+  .st-row input { flex:1; }
+  .pill { background:#eaf1f8; border-radius:10px; padding:2px 8px; font-size:11px;
+          color:#1f3864; font-weight:600; }
 </style>
 </head>
 <body>
@@ -161,6 +168,19 @@
   </div>
 
   <div class="panel">
+    <h2 style="margin-top:0">Equipment inventory</h2>
+    <p class="hint">
+      What the lab owns and how many. Once an item is listed here, a booking can
+      reserve it, and the board will warn when more are booked than exist.
+    </p>
+    <table id="inv"><tbody></tbody></table>
+    <p>
+      <button class="ghost tiny" id="invAdd">+ Add item</button>
+      <span class="hint" style="margin-left:8px">Blank the name to delete an item.</span>
+    </p>
+  </div>
+
+  <div class="panel">
     <h2 style="margin-top:0">Board theme</h2>
     <div class="grid2" id="theme"></div>
   </div>
@@ -174,6 +194,24 @@
     <table id="rooms"><tbody></tbody></table>
   </div>
 
+  <dialog id="stDlg">
+    <h3 id="stTitle">Stations</h3>
+    <p class="hint">
+      The physical positions in this room — beds, tables, chairs. Once a room has
+      stations, a booking can say which skill happens at each one and what it needs.
+    </p>
+    <div id="stList"></div>
+    <p>
+      <button class="ghost tiny" id="stAddBed">+ Bed</button>
+      <button class="ghost tiny" id="stAddTable">+ Table</button>
+      <button class="ghost tiny" id="stAddOther">+ Other</button>
+    </p>
+    <p style="margin-top:14px">
+      <button id="stDone">Done</button>
+      <button class="ghost" id="stCancel">Cancel</button>
+    </p>
+  </dialog>
+
   <div id="save">
     <button id="saveBtn">Save changes</button>
     <button class="ghost" id="reset">Reset to defaults</button>
@@ -186,8 +224,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy,
-         getDocs, updateDoc }
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, query,
+         orderBy, getDocs, updateDoc }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig, DEFAULT_SETTINGS } from "./firebase-config.js";
 
@@ -202,7 +240,8 @@ const THEME_FIELDS = [
 ];
 
 let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
-let rooms = [];
+let rooms = [], roomStations = {};
+let inventory = [], invDeleted = [];
 
 $("signin").onclick = async () => {
   try { await signInWithEmailAndPassword(auth, $("email").value, $("pass").value); }
@@ -224,8 +263,15 @@ async function load() {
     settings.theme  = Object.assign({}, DEFAULT_SETTINGS.theme, s.theme || {});
     settings.colors = s.colors || DEFAULT_SETTINGS.colors;
   }
+  const iv = await getDocs(collection(db,"inventory"));
+  inventory = iv.docs.map(d => ({id:d.id, ...d.data()}))
+                .sort((a,b) => (a.name||"").localeCompare(b.name||""));
+  invDeleted = [];
+
   const rs = await getDocs(query(collection(db,"rooms"), orderBy("order")));
   rooms = rs.docs.map(d => ({id:d.id, ...d.data()}));
+  roomStations = {};
+  rooms.forEach(r => roomStations[r.id] = r.stations || []);
   draw();
 }
 
@@ -266,7 +312,8 @@ function draw() {
 
   // rooms
   const tb = $("rooms").querySelector("tbody");
-  tb.innerHTML = "<tr><th>Show</th><th>Label</th><th>Group</th><th>Capacity</th></tr>";
+  tb.innerHTML = "<tr><th>Show</th><th>Label</th><th>Group</th><th>Capacity</th>" +
+                 "<th>Stations</th></tr>";
   rooms.forEach(r => {
     const tr = document.createElement("tr");
     tr.innerHTML =
@@ -277,12 +324,109 @@ function draw() {
       "<td><input type='text' class='r_group' data-id='" + r.id + "' value='" +
       (r.group||"") + "'></td>" +
       "<td><input type='number' class='r_cap' data-id='" + r.id + "' value='" +
-      (r.capacity||0) + "'></td>";
+      (r.capacity||0) + "'></td>" +
+      "<td><span class='pill' id='stc_" + r.id + "'>" +
+      ((roomStations[r.id]||[]).length) + "</span> " +
+      "<button class='ghost tiny st_edit' data-id='" + r.id + "'>Edit</button></td>";
     tb.appendChild(tr);
   });
 
+  drawInventory();
+
+  tb.querySelectorAll(".st_edit").forEach(b =>
+    b.onclick = () => openStations(b.dataset.id));
+
   preview();
 }
+
+/* ---------- inventory ---------- */
+function drawInventory() {
+  const tb = $("inv").querySelector("tbody");
+  tb.innerHTML = "<tr><th>Item</th><th>How many</th><th>Category</th>" +
+                 "<th>Notes</th><th></th></tr>";
+  inventory.forEach((it,i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td><input type='text' class='i_name' data-i='" + i + "' value='" +
+        (it.name||"") + "'></td>" +
+      "<td><input type='number' min='0' class='i_qty' data-i='" + i +
+        "' value='" + (it.qty != null ? it.qty : 1) + "' style='width:70px'></td>" +
+      "<td><input type='text' class='i_cat' data-i='" + i + "' value='" +
+        (it.category||"") + "' style='width:110px'></td>" +
+      "<td><input type='text' class='i_note' data-i='" + i + "' value='" +
+        (it.notes||"") + "'></td>" +
+      "<td><button class='danger tiny i_del' data-i='" + i + "'>Remove</button></td>";
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll(".i_name").forEach(e =>
+    e.oninput = () => inventory[+e.dataset.i].name = e.value);
+  tb.querySelectorAll(".i_qty").forEach(e =>
+    e.oninput = () => inventory[+e.dataset.i].qty = parseInt(e.value,10) || 0);
+  tb.querySelectorAll(".i_cat").forEach(e =>
+    e.oninput = () => inventory[+e.dataset.i].category = e.value);
+  tb.querySelectorAll(".i_note").forEach(e =>
+    e.oninput = () => inventory[+e.dataset.i].notes = e.value);
+  tb.querySelectorAll(".i_del").forEach(e => e.onclick = () => {
+    const it = inventory[+e.dataset.i];
+    if (it.id) invDeleted.push(it.id);
+    inventory.splice(+e.dataset.i,1);
+    drawInventory();
+  });
+}
+
+$("invAdd").onclick = () => {
+  inventory.push({ name:"", qty:1, category:"", notes:"" });
+  drawInventory();
+};
+
+/* ---------- stations ---------- */
+let stRoom = null, stDraft = [];
+
+function openStations(roomId) {
+  stRoom = roomId;
+  stDraft = JSON.parse(JSON.stringify(roomStations[roomId] || []));
+  const r = rooms.find(x => x.id === roomId) || {};
+  $("stTitle").textContent = "Stations in " + (r.label || roomId);
+  drawStations();
+  $("stDlg").showModal();
+}
+
+function drawStations() {
+  $("stList").innerHTML = stDraft.map((st,i) =>
+    "<div class='st-row'>" +
+    "<select data-i='" + i + "' class='st_type'>" +
+      ["bed","table","chair","trainer","other"].map(t =>
+        "<option" + (st.type === t ? " selected" : "") + ">" + t + "</option>").join("") +
+    "</select>" +
+    "<input class='st_label' data-i='" + i + "' value='" + (st.label||"") + "'>" +
+    "<button class='danger tiny st_del' data-i='" + i + "'>Remove</button>" +
+    "</div>").join("") ||
+    "<p class='hint'>No stations yet. Add a bed or table below.</p>";
+
+  $("stList").querySelectorAll(".st_type").forEach(e =>
+    e.onchange = () => stDraft[+e.dataset.i].type = e.value);
+  $("stList").querySelectorAll(".st_label").forEach(e =>
+    e.oninput = () => stDraft[+e.dataset.i].label = e.value);
+  $("stList").querySelectorAll(".st_del").forEach(e =>
+    e.onclick = () => { stDraft.splice(+e.dataset.i,1); drawStations(); });
+}
+
+function addStation(type) {
+  const n = stDraft.filter(s => s.type === type).length + 1;
+  const label = type.charAt(0).toUpperCase() + type.slice(1) + " " + n;
+  stDraft.push({ id: type + n + "_" + Date.now().toString(36).slice(-4),
+                 type, label });
+  drawStations();
+}
+$("stAddBed").onclick   = () => addStation("bed");
+$("stAddTable").onclick = () => addStation("table");
+$("stAddOther").onclick = () => addStation("other");
+$("stCancel").onclick   = () => $("stDlg").close();
+$("stDone").onclick = () => {
+  roomStations[stRoom] = stDraft;
+  $("stc_" + stRoom).textContent = stDraft.length;
+  $("stDlg").close();
+};
 
 function addColorRow(name, hex) {
   const row = document.createElement("div");
@@ -362,9 +506,25 @@ $("saveBtn").onclick = async () => {
       active: q(".r_active").checked,
       label: q(".r_label").value.trim(),
       group: q(".r_group").value.trim(),
-      capacity: parseInt(q(".r_cap").value,10) || 0
+      capacity: parseInt(q(".r_cap").value,10) || 0,
+      stations: roomStations[r.id] || []
     });
   }
+  for (const it of inventory) {
+    if (!(it.name||"").trim()) continue;
+    const payload = { name: it.name.trim(), qty: it.qty || 0,
+                      category: (it.category||"").trim(),
+                      notes: (it.notes||"").trim() };
+    if (it.id) await setDoc(doc(db,"inventory",it.id), payload);
+    else {
+      const id = it.name.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").slice(0,40);
+      await setDoc(doc(db,"inventory",id), payload);
+      it.id = id;
+    }
+  }
+  for (const id of invDeleted) await deleteDoc(doc(db,"inventory",id));
+  invDeleted = [];
+
   $("status").textContent = "Saved — the board is already showing it.";
   setTimeout(() => $("status").textContent = "", 4000);
 };
