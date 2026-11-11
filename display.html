@@ -46,6 +46,14 @@
   .note:hover { outline:2px solid #fff; outline-offset:1px; }
   .note .meta { display:block; margin-top:8px; font-size:84%; opacity:.72;
                 font-weight:400; }
+  .note .thread { display:block; margin-top:8px; border-top:1px solid
+                  rgba(0,0,0,.18); padding-top:6px; }
+  .note .reply { display:block; font-size:92%; font-weight:400; opacity:.9;
+                 padding:3px 0; }
+  .note .reply b { font-weight:700; }
+  .replybtn { margin-left:8px; background:rgba(0,0,0,.18); color:inherit;
+              border:0; border-radius:10px; padding:2px 9px; font-size:92%;
+              cursor:pointer; font-weight:600; }
   .note.pinned::after { content:"PIN"; position:absolute; top:5px; right:7px;
                         font-size:9px; letter-spacing:1px; opacity:.6;
                         font-weight:700; }
@@ -215,6 +223,41 @@
   .itemchip.over { border-color:#ff9e9e; color:#ff9e9e; }
   .entryhead { display:flex; align-items:center; gap:8px; }
   .entryhead h3 { flex:1; }
+
+  /* Paper: ink-light, borders visible, no screen furniture. */
+  @media print {
+    @page { size: landscape; margin: 10mm; }
+    html, body, body.fit, body.multi {
+      background:#fff !important; color:#000 !important;
+      height:auto !important; overflow:visible !important; display:block; }
+    #admin, #offline, #watermark, #overlay, #noteEditor, .replybtn,
+    #notesHead button { display:none !important; }
+    header { padding:0 0 6px; }
+    h1 { color:#000 !important; font-size:18pt; }
+    #sub, #clock { color:#333 !important; font-size:11pt; }
+    #logo { max-height:40px; }
+    #board { overflow:visible !important; padding:0; }
+    #panels { display:block !important; }
+    .panel { break-inside:avoid; page-break-inside:avoid; margin-bottom:10px;
+             background:#fff !important; border:1px solid #000 !important; }
+    .panel h2 { background:#fff !important; color:#000 !important;
+                border-bottom:1px solid #000; font-size:11pt; }
+    table, table.compact { font-size:7pt !important; }
+    th, td, table.compact th, table.compact td {
+      border:1px solid #666 !important; color:#000 !important;
+      background:#fff !important; font-size:7pt !important; padding:2px !important; }
+    th, td.day { background:#e9e9e9 !important; font-weight:700; }
+    tr.today td { background:#f2f2f2 !important; }
+    .chip { color:#000 !important; border:1px solid #666;
+            background:#fff !important; font-weight:600; }
+    .banner { color:#000 !important; }
+    #notes { background:#fff !important; border-top:1px solid #000;
+             page-break-inside:avoid; }
+    #notesTitle { color:#000 !important; }
+    #noteList { max-height:none !important; overflow:visible !important; }
+    .note { background:#fff !important; color:#000 !important;
+            border:1px solid #666 !important; box-shadow:none !important; }
+  }
 </style>
 </head>
 <body>
@@ -226,6 +269,7 @@
   <div id="sub"></div>
   <div id="clock"></div>
   <div id="admin">
+    <button id="print" title="Print this view">&#128424;</button>
     <button id="gear" title="Display settings">&#9881;</button>
     <button id="who" title="Staff sign in">&#128274;</button>
   </div>
@@ -436,7 +480,7 @@ function weekTableHTML(weekStart, opts) {
         cells.forEach(b => {
           html += "<span class='chip " + (b.status === "tentative" ? "tentative" : "") +
                   "' style='background:" + (colors[b.color]||colors.grey||"#7a8794") + "'>" +
-                  esc(b.course||"") +
+                  (b.icon ? esc(b.icon) + " " : "") + esc(b.course||"") +
                   (!compact && b.block ? "<small>" + esc(b.block) + "</small>" : "") +
                   "</span>";
         });
@@ -609,8 +653,10 @@ function renderNotes() {
   document.getElementById("addNote").style.display = user ? "" : "none";
 
   const list = document.getElementById("noteList");
-  const sorted = boardNotes.slice().sort((a,b) =>
-    (b.pinned?1:0) - (a.pinned?1:0));
+  const tops = boardNotes.filter(n => !n.parentId);
+  const repliesOf = id => boardNotes.filter(n => n.parentId === id)
+    .sort((a,b) => (whenMs(a.createdAt) - whenMs(b.createdAt)));
+  const sorted = tops.slice().sort((a,b) => (b.pinned?1:0) - (a.pinned?1:0));
   if (!sorted.length) {
     const bg = colors.grey || "#7a8794";
     list.innerHTML = "<div class='note' style='background:" + bg + ";color:" +
@@ -621,12 +667,31 @@ function renderNotes() {
   }
   list.innerHTML = sorted.map(n => {
     const bg = noteHexOf(n);
+    const reps = repliesOf(n.id);
+    const thread = reps.map(r =>
+      "<span class='reply' data-id='" + r.id + "'><b>" +
+      esc((r.author||"").split("@")[0]) + "</b> " + esc(r.text||"") + "</span>").join("");
     return "<div class='note" + (n.pinned ? " pinned" : "") + "' data-id='" +
       n.id + "' style='background:" + bg + ";color:" + readableOn(bg) + "'>" +
       esc(n.text || "") +
+      (thread ? "<span class='thread'>" + thread + "</span>" : "") +
       "<span class='meta'>" + esc((n.author||"").split("@")[0]) +
-      (n.updatedAt ? " &middot; " + fmtWhen(n.updatedAt) : "") + "</span></div>";
+      (n.updatedAt ? " &middot; " + fmtWhen(n.updatedAt) : "") +
+      (reps.length ? " &middot; " + reps.length +
+        (reps.length === 1 ? " reply" : " replies") : "") +
+      (user ? "<button class='replybtn' data-id='" + n.id + "'>Reply</button>" : "") +
+      "</span></div>";
   }).join("");
+
+  list.querySelectorAll(".replybtn").forEach(btn => btn.onclick = ev => {
+    ev.stopPropagation();
+    noteEditor(null, btn.dataset.id);
+  });
+  list.querySelectorAll(".reply").forEach(el => el.onclick = ev => {
+    ev.stopPropagation();
+    const r = boardNotes.find(x => x.id === el.dataset.id);
+    if (user && r) noteEditor(r, r.parentId);
+  });
 
   list.querySelectorAll(".note[data-id]").forEach(el => {
     el.onclick = () => {
@@ -636,6 +701,11 @@ function renderNotes() {
   });
 }
 
+function whenMs(ts) {
+  try { return ts.toDate ? ts.toDate().getTime() : new Date(ts).getTime(); }
+  catch (e) { return 0; }
+}
+
 function fmtWhen(ts) {
   try {
     const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -643,12 +713,19 @@ function fmtWhen(ts) {
   } catch (e) { return ""; }
 }
 
-function noteEditor(n) {
+let replyTo = null;
+
+function noteEditor(n, parentId) {
   if (!user) return;
+  replyTo = parentId || (n && n.parentId) || null;
   editingNote = n || null;
   noteColor = n ? (n.color || "yellow") : "yellow";
   noteHex = n ? (n.hex || null) : null;
-  document.getElementById("noteBoxTitle").textContent = n ? "Edit note" : "New note";
+  const parent = replyTo ? boardNotes.find(x => x.id === replyTo) : null;
+  document.getElementById("noteBoxTitle").textContent =
+    replyTo ? (n ? "Edit reply" : "Reply to: " +
+                 (parent ? (parent.text||"").slice(0,60) : "note"))
+            : (n ? "Edit note" : "New note");
   document.getElementById("noteText").value = n ? (n.text || "") : "";
   document.getElementById("noteDel").style.display = n ? "" : "none";
   document.getElementById("notePin").textContent =
@@ -692,7 +769,7 @@ function noteEditor(n) {
 
 function closeNoteEditor() {
   document.getElementById("noteEditor").classList.remove("on");
-  editingNote = null;
+  editingNote = null; replyTo = null;
 }
 
 async function saveNote() {
@@ -700,6 +777,7 @@ async function saveNote() {
   if (!text) { closeNoteEditor(); return; }
   const data = { text, color: noteColor, hex: noteHex || null,
                  author: user.email, updatedAt: serverTimestamp() };
+  if (replyTo) data.parentId = replyTo;
   if (editingNote) await updateDoc(doc(db,"boardNotes",editingNote.id), data);
   else await addDoc(collection(db,"boardNotes"),
                     Object.assign({createdAt: serverTimestamp(), pinned:false}, data));
@@ -781,7 +859,8 @@ function entryHtml(b, showRoom) {
     : "";
   return "<div class='entry' style='border-left-color:" +
          (colors[b.color]||colors.grey||"#7a8794") + "'>" +
-         "<div class='entryhead'><h3>" + esc(b.course||"") +
+         "<div class='entryhead'><h3>" + (b.icon ? esc(b.icon) + " " : "") +
+         esc(b.course||"") +
          (b.status === "tentative" ? "<span class='flag'>TENTATIVE</span>" : "") +
          "</h3>" + editBtn + "</div>" +
          "<div class='when'>" + (b.block ? esc(b.block) : "Time not set") +
@@ -1150,8 +1229,12 @@ function editForm(b) {
     (b && b.groupId
       ? "<label style='margin-top:10px'><input type='checkbox' id='e_all'> " +
         "Apply changes to every room in this event</label>" : "") +
-    "<label>Course / group</label><input id='e_course' value='" +
-      esc(b ? (b.course||"") : "") + "'>" +
+    "<div class='two' style='grid-template-columns:86px 1fr'>" +
+      "<div><label>Icon</label><input id='e_icon' maxlength='4' " +
+        "placeholder='&#129658;' value='" + esc(b ? (b.icon||"") : "") + "'></div>" +
+      "<div><label>Course / group</label><input id='e_course' value='" +
+        esc(b ? (b.course||"") : "") + "'></div>" +
+    "</div>" +
     "<div class='two'>" +
       "<div><label>Block</label><input id='e_block' placeholder='AM, 13:00-16:00' value='" +
         esc(b ? (b.block||"") : "") + "'></div>" +
@@ -1368,7 +1451,8 @@ function editForm(b) {
     const v = id => document.getElementById(id).value.trim();
     const data = {
       date: openCell.date, roomId: openCell.roomId,
-      course: v("e_course"), block: v("e_block"), instructor: v("e_inst"),
+      course: v("e_course"), icon: v("e_icon"),
+      block: v("e_block"), instructor: v("e_inst"),
       contact: v("e_contact"), setup: v("e_setup"),
       groupSize: parseInt(v("e_group"),10) || 0,
       color: v("e_color"), status: v("e_status"),
@@ -1438,6 +1522,7 @@ function editForm(b) {
   };
 }
 
+document.getElementById("print").onclick = () => window.print();
 document.getElementById("gear").onclick = () => window.open("settings.html","_blank");
 document.getElementById("who").onclick = () => {
   if (user) { if (confirm("Sign out of editing?")) signOut(auth); }
