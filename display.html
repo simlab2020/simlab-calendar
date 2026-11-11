@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sim Lab - Week at a Glance</title>
-<meta name="build" content="2026-11-11-nav">
+<meta name="build" content="2026-11-11-nav2">
 <style>
   :root { color-scheme:dark; --bg:#0d1b2a; --panel:#152c42; --line:#2c4257;
           --fg:#fff; --muted:#8fb3cc; --today:#17334d; --note:#ffd9a0;
@@ -32,9 +32,10 @@
   h1 { font-size:calc(2.1vw * var(--s)); margin:0; letter-spacing:1px;
        color:var(--fg); white-space:nowrap; }
   #sub { font-size:calc(1.2vw * var(--s)); color:var(--muted); }
-  #clock { font-size:calc(1.5vw * var(--s)); color:var(--muted); }
+  #clock { font-size:calc(1.5vw * var(--s)); color:var(--muted);
+           margin-left:auto; }
   #clock.hide, #sub.hide { display:none; }
-  #nav { display:flex; gap:6px; margin-left:auto; }
+  #nav { display:flex; gap:6px; }
   #nav button { background:transparent; border:1px solid var(--line);
                 color:var(--muted); border-radius:6px; cursor:pointer;
                 font-size:calc(1.0vw * var(--s)); padding:4px 13px;
@@ -285,13 +286,13 @@
 <header>
   <img id="logo" alt="" hidden>
   <h1 id="wkTitle">Loading...</h1>
-  <div id="sub"></div>
-  <div id="clock"></div>
   <div id="nav">
     <button id="prevWk" title="Previous week">&#8249;</button>
     <button id="todayWk" title="Back to this week">Today</button>
     <button id="nextWk" title="Next week">&#8250;</button>
   </div>
+  <div id="sub"></div>
+  <div id="clock"></div>
   <div id="admin">
     <button id="print" title="Print this view">&#128424;</button>
     <button id="gear" title="Display settings">&#9881;</button>
@@ -359,7 +360,7 @@ const auth = getAuth(fbApp);
 let user = null;
 onAuthStateChanged(auth, u => { user = u; paintAuth(); });
 const DAYS = ["Mon","Tues","Wed","Thurs","Fri","Sat","Sun"];
-console.log("display.html build 2026-11-11-nav");
+console.log("display.html build 2026-11-11-nav2");
 
 let rooms = [], bookings = [], notes = {}, offset = 0, rotating = true;
 let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
@@ -430,8 +431,10 @@ function applyTheme() {
   document.getElementById("clock").className = settings.showClock ? "" : "hide";
   document.getElementById("admin").className =
     settings.showAdminButtons === false ? "hide" : "";
-  document.getElementById("nav").style.display =
-    settings.showNavButtons === false ? "none" : "flex";
+  const navEl = document.getElementById("nav");
+  navEl.style.display = (settings.showNavButtons === false) ? "none" : "flex";
+  console.log("nav buttons:", navEl.style.display,
+              "| showNavButtons =", settings.showNavButtons);
 
   const logo = document.getElementById("logo");
   if (settings.logoUrl) { logo.src = settings.logoUrl; logo.hidden = false; }
