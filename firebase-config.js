@@ -54,6 +54,10 @@ export const DEFAULT_SETTINGS = {
   showNotes: true,
   notesTitle: "Notes & Ideas",
   notesHeightVh: 24,
+  fitToScreen: true,
+  logoUrl: "",
+  watermarkUrl: "",
+  watermarkOpacity: 8,
   showAdminButtons: true,
   colors: COLORS,
   theme: {
@@ -66,4 +70,6 @@ export const DEFAULT_SETTINGS = {
     note:    "#ffd9a0",
     divider: "#d05a5a"
   }
+};
+
 };
