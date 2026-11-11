@@ -58,6 +58,9 @@ export const DEFAULT_SETTINGS = {
   logoUrl: "",
   watermarkUrl: "",
   watermarkOpacity: 8,
+  watermarkSize: 55,
+  browseResetSec: 120,
+  showNavButtons: true,
   showAdminButtons: true,
   colors: COLORS,
   theme: {
