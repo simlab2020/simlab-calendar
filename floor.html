@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sim Lab - Floor View</title>
+<meta name="build" content="2026-11-16-floor2">
+<style>
+  :root { color-scheme:dark; --bg:#0d1b2a; --panel:#152c42; --line:#2c4257;
+          --fg:#fff; --muted:#8fb3cc; --note:#ffd9a0; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+              font-family:"Segoe UI",system-ui,sans-serif; overflow:hidden; }
+  body { display:flex; flex-direction:column; }
+
+  header { display:flex; align-items:center; gap:14px; padding:9px 16px;
+           background:var(--panel); border-bottom:2px solid var(--line);
+           flex-wrap:wrap; }
+  h1 { margin:0; font-size:clamp(15px,1.7vw,30px); letter-spacing:1px;
+       white-space:nowrap; }
+  #day { font-size:clamp(11px,1.1vw,19px); color:var(--muted); }
+  header button, header input, header select {
+      background:transparent; border:1px solid var(--line); color:var(--muted);
+      border-radius:6px; padding:5px 11px; font-size:14px; cursor:pointer;
+      font-weight:600; font-family:inherit; }
+  header button:hover { color:var(--fg); border-color:var(--muted); }
+  #when { margin-left:auto; display:flex; align-items:center; gap:8px; }
+  #clock { color:var(--muted); font-size:clamp(12px,1.3vw,22px); }
+
+  #wrap { flex:1 1 auto; min-height:0; display:flex; }
+  #plan { flex:1 1 auto; min-width:0; position:relative; }
+  svg { width:100%; height:100%; display:block; touch-action:manipulation; }
+
+  .rm { fill:#13243a; stroke:#2c4257; stroke-width:3; }
+  .rm.book { cursor:pointer; }
+  .rm.book:hover { stroke:#fff; stroke-width:5; }
+  .rm.off { fill:#101d2e; stroke:#1d3148; }
+  .rlab { fill:var(--muted); font-weight:700; text-anchor:middle;
+          pointer-events:none; }
+  .rsub { fill:var(--muted); text-anchor:middle; opacity:.72;
+          pointer-events:none; }
+  .bed  { stroke:#0d1b2a; stroke-width:2; }
+  .tbl  { stroke:#0d1b2a; stroke-width:2; fill:#5a6b7d; }
+  .slab { fill:#dce8f3; font-size:15px; text-anchor:middle; pointer-events:none; }
+  .door { stroke:#0d1b2a; stroke-width:7; stroke-linecap:round; }
+  .eq   { fill:#ffd9a0; font-size:18px; text-anchor:middle; pointer-events:none; }
+
+  #side { width:330px; flex:none; background:var(--panel);
+          border-left:1px solid var(--line); overflow-y:auto; padding:14px 16px; }
+  #side h2 { margin:0 0 2px; font-size:21px; }
+  #side .sub { color:var(--muted); font-size:14px; margin-bottom:12px; }
+  .card { background:#0f1f30; border-left:5px solid var(--muted);
+          border-radius:6px; padding:10px 12px; margin-bottom:9px; font-size:14px; }
+  .card b { font-size:15px; }
+  .card .when2 { color:var(--muted); font-size:13px; }
+  .card .st { display:block; color:var(--muted); font-size:13px; margin-top:4px; }
+  .card .st b { color:#fff; font-size:13px; }
+  .card .sup { color:var(--note); }
+  .empty { color:var(--muted); font-size:15px; }
+  .chip { display:inline-block; border-radius:11px; padding:2px 9px; font-size:12px;
+          background:#0f1f30; border:1px solid var(--line); margin:3px 4px 0 0; }
+  .chip.over { border-color:#ff9e9e; color:#ff9e9e; }
+
+  #legend { display:flex; gap:14px; flex-wrap:wrap; padding:7px 16px;
+            background:var(--panel); border-top:1px solid var(--line);
+            font-size:13px; color:var(--muted); }
+  #legend span { display:flex; align-items:center; gap:6px; }
+  #legend i { width:13px; height:13px; border-radius:3px; display:inline-block; }
+
+  @media (max-width:860px) {
+    #wrap { flex-direction:column; }
+    #side { width:auto; max-height:40vh; border-left:0; border-top:1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>FLOOR VIEW</h1>
+  <div id="day"></div>
+  <div id="when">
+    <button id="prev" title="Previous day">&#8249;</button>
+    <input type="date" id="date">
+    <button id="today">Today</button>
+    <button id="next" title="Next day">&#8250;</button>
+    <select id="slot"><option value="">All day</option></select>
+    <button id="board" title="Back to the week grid">Week grid</button>
+    <span id="clock"></span>
+  </div>
+</header>
+
+<div id="wrap">
+  <div id="plan"><svg id="svg" preserveAspectRatio="xMidYMid meet"></svg></div>
+  <aside id="side"><p class="empty">Tap a room to see what is set up in it.</p></aside>
+</div>
+
+<div id="legend">
+  <span><i style="background:#13243a;border:2px solid #2c4257"></i> Not booked</span>
+  <span><i style="background:#1f6f4a"></i> Booked</span>
+  <span><i style="background:#8a6a1e"></i> Partly used</span>
+  <span><i style="background:#7a1c1c"></i> Over capacity</span>
+  <span><i style="background:#2f3f52"></i> Not on the board</span>
+  <span><i style="background:#ff9e9e"></i> Supplies low</span>
+  <span>Beds and tables are drawn where they stand.</span>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+         memoryLocalCache, collection, doc, query, where, onSnapshot }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { firebaseConfig, COLORS as FALLBACK_COLORS, DEFAULT_SETTINGS }
+  from "./firebase-config.js";
+
+const fbApp = initializeApp(firebaseConfig);
+let db;
+try {
+  db = initializeFirestore(fbApp, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    experimentalAutoDetectLongPolling: true
+  });
+} catch (e) {
+  db = initializeFirestore(fbApp, { localCache: memoryLocalCache(),
+                                    experimentalAutoDetectLongPolling: true });
+}
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const iso = d => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0")
+                 + "-" + String(d.getDate()).padStart(2,"0");
+const addDays = (d,n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
+
+let rooms = [], bookings = [], inventory = [], plan = null;
+let colors = FALLBACK_COLORS, settings = DEFAULT_SETTINGS;
+let day = iso(new Date()), slot = "", picked = null;
+
+/* ---------- live data: the same collections the board reads ---------- */
+onSnapshot(collection(db,"rooms"), snap => {
+  if (snap.metadata.fromCache && snap.empty && rooms.length) return;
+  rooms = snap.docs.map(d => ({id:d.id, ...d.data()}))
+            .sort((a,b) => (a.order||0) - (b.order||0));
+  draw();
+}, e => console.error("rooms:", e));
+
+onSnapshot(collection(db,"inventory"), snap => {
+  if (snap.metadata.fromCache && snap.empty && inventory.length) return;
+  inventory = snap.docs.map(d => ({id:d.id, ...d.data()}));
+  draw();
+}, e => console.error("inventory:", e));
+
+onSnapshot(doc(db,"settings","display"), snap => {
+  if (snap.exists()) {
+    settings = Object.assign({}, DEFAULT_SETTINGS, snap.data());
+    colors = Object.assign({}, FALLBACK_COLORS, snap.data().colors || {});
+  }
+  draw();
+}, e => console.error("settings:", e));
+
+onSnapshot(doc(db,"settings","floorplan"), snap => {
+  if (snap.exists()) plan = snap.data();
+  draw();
+}, e => console.error("floorplan:", e));
+
+let unsubDay = null;
+function watchDay() {
+  if (unsubDay) unsubDay();
+  unsubDay = onSnapshot(query(collection(db,"bookings"), where("date","==",day)),
+    snap => {
+      if (snap.metadata.fromCache && snap.empty && bookings.length) return;
+      bookings = snap.docs.map(d => ({id:d.id, ...d.data()}));
+      fillSlots();
+      draw();
+    }, e => console.error("bookings:", e));
+}
+
+/* ---------- helpers ---------- */
+const roomOf = id => rooms.find(r => r.id === id) || null;
+const roomLabelOf = id => (rooms.find(r => r.id === id) || {}).label || id;
+const itemLow = it => !!it.par && (it.qty || 0) <= it.par;
+const keptIn = id => inventory.filter(i => i.room === id);
+const inSlot = b => !slot || (b.block || "") === slot;
+const bookingsFor = id => bookings.filter(b => b.roomId === id && inSlot(b));
+
+function fillSlots() {
+  const blocks = [...new Set(bookings.map(b => (b.block||"").trim()).filter(Boolean))].sort();
+  const sel = $("slot"), keep = sel.value;
+  sel.innerHTML = "<option value=''>All day</option>" +
+    blocks.map(b => "<option>" + esc(b) + "</option>").join("");
+  sel.value = blocks.includes(keep) ? keep : "";
+  slot = sel.value;
+}
+
+// Which stations a room's bookings have claimed, and by what.
+function stationUse(roomId) {
+  const use = {};
+  bookingsFor(roomId).forEach(b => (b.stations||[]).forEach(s => {
+    if (s.skill || s.supplies) use[s.id] = { ...s, course: b.course, color: b.color };
+  }));
+  return use;
+}
+
+function roomState(r) {
+  const bk = bookingsFor(r.id);
+  if (!bk.length) return { fill:"#13243a", label:"" };
+  const heads = bk.reduce((n,b) => n + (b.groupSize||0), 0);
+  if (r.capacity && heads > r.capacity)
+    return { fill:"#7a1c1c", label:heads + " of " + r.capacity };
+  const stns = (r.stations||[]).length;
+  const used = Object.keys(stationUse(r.id)).length;
+  if (stns && used && used < stns) return { fill:"#8a6a1e", label:used + "/" + stns };
+  return { fill:"#1f6f4a", label:"" };
+}
+
+/* ---------- drawing ---------- */
+function draw() {
+  const svg = $("svg");
+  $("day").textContent = new Date(day + "T00:00:00")
+    .toLocaleDateString(undefined,{weekday:"long", month:"long", day:"numeric"});
+  $("date").value = day;
+
+  if (!plan) {
+    svg.innerHTML = "<text x='40' y='60' fill='#8fb3cc' font-size='26'>" +
+      "The floor plan has not been imported yet - run import-layout.html.</text>";
+    return;
+  }
+  const B = plan.bounds, U = plan.unit || 32, pad = 40;
+  svg.setAttribute("viewBox",
+    (B.x1-pad) + " " + (B.y1-pad) + " " +
+    (B.x2-B.x1+pad*2) + " " + (B.y2-B.y1+pad*2+30));
+
+  // One physical room can carry more than one column on the board (126 A and
+  // 126 B). Draw each as its own slice of the footprint so they do not overlap.
+  const cells = [];
+  for (const pr of plan.rooms) {
+    const mine = rooms.filter(x => x.active !== false && x.geom &&
+                  x.geom.x1 === pr.x1 && x.geom.y1 === pr.y1 &&
+                  x.geom.x2 === pr.x2 && x.geom.y2 === pr.y2)
+                 .sort((a,b) => (a.order||0) - (b.order||0));
+    if (!mine.length) { cells.push({pr, r:null, x:pr.x1, y:pr.y1,
+                                    w:pr.x2-pr.x1, h:pr.y2-pr.y1, whole:true}); continue; }
+    const n = mine.length, cw = (pr.x2-pr.x1)/n;
+    mine.forEach((r,i) => cells.push({pr, r, x:pr.x1 + i*cw, y:pr.y1,
+                                      w:cw, h:pr.y2-pr.y1, whole:n === 1, slice:i, of:n}));
+  }
+
+  let g = "";
+  for (const cell of cells) {
+    const pr = cell.pr, r = cell.r;
+    const bookable = !!r;
+    const st = bookable ? roomState(r) : { fill:"", label:"" };
+    const w = cell.w, h = cell.h;
+
+    g += "<rect class='rm " + (bookable ? "book" : "off") + "' data-id='" +
+         (r ? r.id : "") + "' x='" + cell.x + "' y='" + cell.y + "' width='" + w +
+         "' height='" + h + "'" + (st.fill ? " style='fill:" + st.fill + "'" : "") +
+         " rx='4'></rect>";
+
+    // doors, drawn as gaps in the wall (footprint coords, once per room)
+    if (cell.slice === undefined || cell.slice === 0) (pr.doors||[]).forEach(d => {
+      const pw = pr.x2-pr.x1, ph = pr.y2-pr.y1;
+      const dw = (d.w||1.2) * U, t = d.t == null ? .5 : d.t;
+      let x1,y1,x2,y2;
+      if (d.side === "n") { x1 = pr.x1 + pw*t - dw/2; x2 = x1+dw; y1 = y2 = pr.y1; }
+      else if (d.side === "s") { x1 = pr.x1 + pw*t - dw/2; x2 = x1+dw; y1 = y2 = pr.y2; }
+      else if (d.side === "w") { y1 = pr.y1 + ph*t - dw/2; y2 = y1+dw; x1 = x2 = pr.x1; }
+      else { y1 = pr.y1 + ph*t - dw/2; y2 = y1+dw; x1 = x2 = pr.x2; }
+      g += "<line class='door' x1='" + x1 + "' y1='" + y1 + "' x2='" + x2 +
+           "' y2='" + y2 + "' stroke='#0d1b2a'></line>";
+    });
+
+    // beds and tables, at their real positions
+    if (r && r.stations) {
+      const use = stationUse(r.id);
+      for (const s of r.stations) {
+        if (s.x == null || s.z == null) continue;
+        const cx = pr.x1 + s.x*U, cy = pr.y1 + s.z*U;
+        if (cx < cell.x - 2 || cx > cell.x + w + 2) continue;   // other half
+        const bw = (s.type === "bed" ? 0.9 : 1.6) * U;
+        const bh = (s.type === "bed" ? 1.9 : 0.8) * U;
+        const u = use[s.id];
+        const fill = s.type === "bed"
+          ? (u ? (colors[u.color] || "#4a8f4e") : "#39506a") : "#5a6b7d";
+        g += "<g transform='translate(" + cx + "," + cy + ") rotate(" +
+             (s.rot||0) + ")'><rect class='" +
+             (s.type === "bed" ? "bed" : "tbl") + "' x='" + (-bw/2) + "' y='" +
+             (-bh/2) + "' width='" + bw + "' height='" + bh +
+             "' rx='5' style='fill:" + fill + "'></rect></g>";
+        // Only label a station when there is room for the text: in a small
+        // room the room number is the useful label, and the side panel has
+        // the rest.
+        const ly = cy + bh/2 + 17;
+        if (Math.min(w, h) > 150 && ly < cell.y + h - 4)
+          g += "<text class='slab' x='" + cx + "' y='" + ly + "'>" +
+               esc(u ? (u.skill || s.label) : s.label) + "</text>";
+      }
+      // equipment reserved into this room today
+      const items = [];
+      bookingsFor(r.id).forEach(b => (b.items||[]).forEach(x =>
+        items.push((inventory.find(i => i.id === x.id) || {}).name || x.name || x.id)));
+      if (items.length)
+        g += "<text class='eq' x='" + (cell.x + w/2) + "' y='" + (cell.y + h - 12) + "'>" +
+             esc([...new Set(items)].join(" · ")) + "</text>";
+    }
+
+    const name = r ? (r.label || pr.id) : pr.id;
+    const fs = Math.max(11, Math.min(26, Math.min(w, h) * 0.17));
+    g += "<text class='rlab' style='font-size:" + fs + "px' x='" +
+         (cell.x + w/2) + "' y='" + (cell.y + fs + 6) + "'>" + esc(name) + "</text>";
+    if (r) {
+      const low = keptIn(r.id).filter(itemLow).length;
+      if (low)
+        g += "<text class='eq' style='fill:#ff9e9e' x='" + (cell.x + w/2) +
+             "' y='" + (cell.y + h - 30) + "'>\u26a0 " + low + " low</text>";
+    }
+    const sub = st.label || (r ? "" : (pr.name || ""));
+    if (sub && h > 70)
+      g += "<text class='rsub' style='font-size:" + (fs*0.74) + "px' x='" +
+           (cell.x + w/2) + "' y='" + (cell.y + fs*2 + 10) + "'>" +
+           esc(sub) + "</text>";
+  }
+  svg.innerHTML = g;
+
+  svg.querySelectorAll("rect.book").forEach(el => el.onclick = () => {
+    picked = el.dataset.id; side();
+  });
+  if (picked) side();
+}
+
+/* ---------- side panel ---------- */
+function side() {
+  const r = roomOf(picked);
+  if (!r) return;
+  const bk = bookingsFor(r.id);
+  const use = stationUse(r.id);
+  let h = "<h2>" + esc(r.label || r.id) + "</h2>" +
+          "<div class='sub'>" + esc(r.roomName || "") +
+          (r.capacity ? " &middot; seats " + r.capacity : "") + "</div>";
+
+  h += bk.length
+    ? bk.map(b => {
+        const c = colors[b.color] || "#7a8794";
+        return "<div class='card' style='border-left-color:" + c + "'>" +
+          "<b>" + esc(b.course || "") + "</b>" +
+          (b.block ? " <span class='when2'>" + esc(b.block) + "</span>" : "") +
+          (b.instructor ? "<span class='st'>" + esc(b.instructor) + "</span>" : "") +
+          (b.groupSize ? "<span class='st'>" + b.groupSize + " students" +
+            (r.capacity && b.groupSize > r.capacity ? " — over capacity" : "") +
+            "</span>" : "") +
+          (b.setup ? "<span class='st sup'>" + esc(b.setup) + "</span>" : "") +
+          ((b.items||[]).length ? "<div>" + b.items.map(x =>
+            "<span class='chip'>" +
+            esc((inventory.find(i => i.id === x.id)||{}).name || x.name || x.id) +
+            ((x.qty||1) > 1 ? " ×" + x.qty : "") + "</span>").join("") + "</div>" : "") +
+          "</div>";
+      }).join("")
+    : "<p class='empty'>Nothing booked here " +
+      (slot ? "in this block." : "today.") + "</p>";
+
+  if ((r.stations||[]).length) {
+    h += "<h2 style='font-size:15px;margin-top:16px'>Stations</h2>";
+    h += r.stations.map(s => {
+      const u = use[s.id];
+      return "<div class='card' style='border-left-color:" +
+        (u ? (colors[u.color] || "#4a8f4e") : "#39506a") + "'>" +
+        "<b>" + esc(s.label) + "</b> <span class='when2'>" + esc(s.type) + "</span>" +
+        (u ? "<span class='st'><b>" + esc(u.skill || u.course || "") + "</b></span>" +
+             (u.supplies ? "<span class='st sup'>" + esc(u.supplies) + "</span>" : "")
+           : "<span class='st'>Nothing assigned</span>") +
+        "</div>";
+    }).join("");
+  } else {
+    h += "<p class='empty' style='margin-top:14px'>No beds or tables recorded " +
+         "for this room yet.</p>";
+  }
+
+  const kept = keptIn(r.id);
+  if (kept.length) {
+    h += "<h2 style='font-size:15px;margin-top:16px'>Kept in this room</h2>";
+    h += kept.map(it => "<div class='card' style='border-left-color:" +
+      (itemLow(it) ? "#ff9e9e" : "#4a6a88") + "'><b>" + esc(it.name) + "</b> " +
+      "<span class='when2'>" + (it.qty||0) + " on hand" +
+      (it.par ? ", reorder at " + it.par : "") + "</span>" +
+      (itemLow(it) ? "<span class='st sup'>Running low</span>" : "") +
+      "</div>").join("");
+  }
+
+  // Anything this room's bookings need that lives somewhere else.
+  const away = [];
+  bk.forEach(b => (b.items||[]).forEach(x => {
+    const inv = inventory.find(i => i.id === x.id);
+    if (inv && inv.room && inv.room !== r.id)
+      away.push({ name: inv.name, home: roomLabelOf(inv.room), qty: x.qty || 1 });
+  }));
+  if (away.length) {
+    h += "<h2 style='font-size:15px;margin-top:16px'>Bring from elsewhere</h2>";
+    h += away.map(a => "<div class='card' style='border-left-color:#e0b36a'>" +
+      "<b>" + esc(a.name) + "</b>" + (a.qty > 1 ? " \u00d7" + a.qty : "") +
+      "<span class='st'>from " + esc(a.home) + "</span></div>").join("");
+  }
+
+  $("side").innerHTML = h;
+}
+
+/* ---------- day and block controls ---------- */
+function setDay(d) { day = d; picked = picked; watchDay(); draw(); }
+$("prev").onclick  = () => setDay(iso(addDays(new Date(day + "T00:00:00"), -1)));
+$("next").onclick  = () => setDay(iso(addDays(new Date(day + "T00:00:00"),  1)));
+$("today").onclick = () => setDay(iso(new Date()));
+$("date").onchange = e => { if (e.target.value) setDay(e.target.value); };
+$("slot").onchange = e => { slot = e.target.value; draw(); };
+$("board").onclick = () => location.href = "display.html";
+
+setInterval(() => {
+  $("clock").textContent =
+    new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+}, 20000);
+$("clock").textContent =
+  new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+
+console.log("floor.html build 2026-11-16-floor2");
+watchDay();
+draw();
+</script>
+</body>
+</html>
