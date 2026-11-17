@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sim Lab - Floor View</title>
-<meta name="build" content="2026-11-16-floor2">
+<meta name="build" content="2026-11-17-3d">
 <style>
   :root { color-scheme:dark; --bg:#0d1b2a; --panel:#152c42; --line:#2c4257;
           --fg:#fff; --muted:#8fb3cc; --note:#ffd9a0; }
@@ -24,12 +24,55 @@
       border-radius:6px; padding:5px 11px; font-size:14px; cursor:pointer;
       font-weight:600; font-family:inherit; }
   header button:hover { color:var(--fg); border-color:var(--muted); }
-  #when { margin-left:auto; display:flex; align-items:center; gap:8px; }
+  .navbar { display:flex; gap:4px; align-items:center; }
+  .navbar a { text-decoration:none; font-weight:600; font-size:13px;
+              padding:5px 11px; border-radius:6px; color:var(--muted);
+              border:1px solid var(--line); white-space:nowrap; }
+  .navbar a:hover { color:var(--fg); border-color:var(--muted); }
+  .navbar a.here { color:var(--fg); border-color:var(--muted);
+                   background:rgba(255,255,255,.06); }
+  #when { margin-left:auto; display:flex; align-items:center; gap:8px;
+          flex-wrap:wrap; }
   #clock { color:var(--muted); font-size:clamp(12px,1.3vw,22px); }
+  #who.on { color:#8fe0a0; border-color:#8fe0a0; }
+  .f2 label { display:block; font-size:12px; font-weight:600; color:var(--muted);
+              margin:9px 0 3px; }
+  .f2 input, .f2 select { width:100%; padding:8px; border-radius:4px;
+      border:1px solid #8fa6bd; background:#fff; color:#102a43; font-size:15px; }
+  .btn2 { background:#1f4e79; color:#fff; border:0; border-radius:5px;
+          padding:8px 13px; font-weight:600; font-size:14px; cursor:pointer;
+          margin:10px 6px 0 0; font-family:inherit; }
+  .btn2.ghost { background:transparent; color:#cfe0ee; border:1px solid var(--line); }
+  .btn2.danger { background:transparent; color:#ff9e9e; border:1px solid #ff9e9e; }
+  .btn2.small { padding:4px 10px; font-size:12px; margin:0 4px 0 0; }
+  .back { background:none; border:0; color:var(--muted); cursor:pointer;
+          font-size:13px; padding:0; margin-bottom:8px; font-family:inherit; }
 
   #wrap { flex:1 1 auto; min-height:0; display:flex; }
   #plan { flex:1 1 auto; min-width:0; position:relative; }
   svg { width:100%; height:100%; display:block; touch-action:manipulation; }
+  svg.off, #gl.off { display:none; }
+  #gl { position:absolute; inset:0; touch-action:none; }
+  #gl canvas { display:block; width:100%; height:100%; }
+  .seg { display:inline-flex; background:var(--bg); border:1px solid var(--line);
+         border-radius:9px; padding:2px; gap:2px; }
+  .seg button { border:0; background:transparent; color:var(--muted);
+                border-radius:7px; padding:5px 11px; font-size:13px;
+                font-weight:600; cursor:pointer; font-family:inherit; }
+  .seg button.on { background:#1f4e79; color:#fff; }
+  #hint3d { position:absolute; left:10px; top:10px; background:rgba(5,12,20,.72);
+            color:#cfe0ee; padding:6px 11px; border-radius:9px; font-size:12.5px;
+            pointer-events:none; max-width:70%; }
+  #youAre { position:absolute; right:12px; top:10px; background:rgba(5,12,20,.78);
+            color:#fff; padding:7px 13px; border-radius:9px; font-size:15px;
+            font-weight:700; pointer-events:none; }
+  #youAre small { display:block; font-weight:400; font-size:12px; color:#8fb3cc; }
+  #pad { position:absolute; left:10px; bottom:10px; display:none;
+         grid-template-columns:repeat(3,52px); gap:5px; }
+  #pad button { height:52px; padding:0; font-size:19px; border-radius:9px;
+                border:1px solid var(--line); background:rgba(21,44,66,.92);
+                color:var(--fg); cursor:pointer; }
+  body.walking #pad { display:grid; }
 
   .rm { fill:#13243a; stroke:#2c4257; stroke-width:3; }
   .rm.book { cursor:pointer; }
@@ -40,6 +83,7 @@
   .rsub { fill:var(--muted); text-anchor:middle; opacity:.72;
           pointer-events:none; }
   .bed  { stroke:#0d1b2a; stroke-width:2; }
+  .stn-hit:hover { stroke:#fff; stroke-width:3; }
   .tbl  { stroke:#0d1b2a; stroke-width:2; fill:#5a6b7d; }
   .slab { fill:#dce8f3; font-size:15px; text-anchor:middle; pointer-events:none; }
   .door { stroke:#0d1b2a; stroke-width:7; stroke-linecap:round; }
@@ -78,19 +122,40 @@
 <header>
   <h1>FLOOR VIEW</h1>
   <div id="day"></div>
+  <nav class="navbar">
+    <a href="display.html">Week</a>
+    <a href="floor.html" class="here">Floor</a>
+    <a href="edit.html">Edit</a>
+    <a href="settings.html">Settings</a>
+  </nav>
+  <div class="seg" id="modes">
+    <button data-m="map" class="on">2D Map</button>
+    <button data-m="3d">3D View</button>
+    <button data-m="walk">Walk</button>
+  </div>
   <div id="when">
     <button id="prev" title="Previous day">&#8249;</button>
     <input type="date" id="date">
     <button id="today">Today</button>
+    <button id="who" title="Staff sign in">&#128274;</button>
     <button id="next" title="Next day">&#8250;</button>
     <select id="slot"><option value="">All day</option></select>
-    <button id="board" title="Back to the week grid">Week grid</button>
     <span id="clock"></span>
   </div>
 </header>
 
 <div id="wrap">
-  <div id="plan"><svg id="svg" preserveAspectRatio="xMidYMid meet"></svg></div>
+  <div id="plan">
+    <svg id="svg" preserveAspectRatio="xMidYMid meet"></svg>
+    <div id="gl" class="off"></div>
+    <div id="hint3d" style="display:none"></div>
+    <div id="youAre" style="display:none"></div>
+    <div id="pad">
+      <span></span><button data-k="f">&#9650;</button><span></span>
+      <button data-k="l">&#9664;</button><button data-k="b">&#9660;</button>
+      <button data-k="r">&#9654;</button>
+    </div>
+  </div>
   <aside id="side"><p class="empty">Tap a room to see what is set up in it.</p></aside>
 </div>
 
@@ -104,11 +169,15 @@
   <span>Beds and tables are drawn where they stand.</span>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-         memoryLocalCache, collection, doc, query, where, onSnapshot }
+         memoryLocalCache, collection, doc, query, where, onSnapshot,
+         updateDoc, addDoc, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { firebaseConfig, COLORS as FALLBACK_COLORS, DEFAULT_SETTINGS }
   from "./firebase-config.js";
 
@@ -124,13 +193,18 @@ try {
                                     experimentalAutoDetectLongPolling: true });
 }
 
+const auth = getAuth(fbApp);
+let user = null;
+onAuthStateChanged(auth, u => { user = u; paintAuth(); });
+
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 const iso = d => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0")
                  + "-" + String(d.getDate()).padStart(2,"0");
 const addDays = (d,n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
 
-let rooms = [], bookings = [], inventory = [], plan = null;
+let rooms = [], bookings = [], inventory = [], skills = [], plan = null;
+let stationOpen = null;
 let colors = FALLBACK_COLORS, settings = DEFAULT_SETTINGS;
 let day = iso(new Date()), slot = "", picked = null;
 
@@ -147,6 +221,13 @@ onSnapshot(collection(db,"inventory"), snap => {
   inventory = snap.docs.map(d => ({id:d.id, ...d.data()}));
   draw();
 }, e => console.error("inventory:", e));
+
+onSnapshot(collection(db,"skills"), snap => {
+  if (snap.metadata.fromCache && snap.empty && skills.length) return;
+  skills = snap.docs.map(d => ({id:d.id, ...d.data()}))
+             .sort((a,b) => (a.name||"").localeCompare(b.name||""));
+  draw();
+}, e => console.error("skills:", e));
 
 onSnapshot(doc(db,"settings","display"), snap => {
   if (snap.exists()) {
@@ -213,7 +294,9 @@ function roomState(r) {
 
 /* ---------- drawing ---------- */
 function draw() {
+  if (mode !== "map" && scene && plan) buildWorld();
   const svg = $("svg");
+  if (mode !== "map") return;
   $("day").textContent = new Date(day + "T00:00:00")
     .toLocaleDateString(undefined,{weekday:"long", month:"long", day:"numeric"});
   $("date").value = day;
@@ -282,9 +365,10 @@ function draw() {
           ? (u ? (colors[u.color] || "#4a8f4e") : "#39506a") : "#5a6b7d";
         g += "<g transform='translate(" + cx + "," + cy + ") rotate(" +
              (s.rot||0) + ")'><rect class='" +
-             (s.type === "bed" ? "bed" : "tbl") + "' x='" + (-bw/2) + "' y='" +
+             (s.type === "bed" ? "bed" : "tbl") + " stn-hit' data-room='" + r.id +
+             "' data-st='" + s.id + "' x='" + (-bw/2) + "' y='" +
              (-bh/2) + "' width='" + bw + "' height='" + bh +
-             "' rx='5' style='fill:" + fill + "'></rect></g>";
+             "' rx='5' style='fill:" + fill + ";cursor:pointer'></rect></g>";
         // Only label a station when there is room for the text: in a small
         // room the room number is the useful label, and the side panel has
         // the rest.
@@ -320,8 +404,12 @@ function draw() {
   }
   svg.innerHTML = g;
 
+  svg.querySelectorAll("rect.stn-hit").forEach(el => el.onclick = ev => {
+    ev.stopPropagation();
+    openStation(el.dataset.room, el.dataset.st);
+  });
   svg.querySelectorAll("rect.book").forEach(el => el.onclick = () => {
-    picked = el.dataset.id; side();
+    stationOpen = null; picked = el.dataset.id; side();
   });
   if (picked) side();
 }
@@ -357,11 +445,13 @@ function side() {
       (slot ? "in this block." : "today.") + "</p>";
 
   if ((r.stations||[]).length) {
-    h += "<h2 style='font-size:15px;margin-top:16px'>Stations</h2>";
+    h += "<h2 style='font-size:15px;margin-top:16px'>Stations " +
+         "<span class='when2'>&mdash; tap one to set it up</span></h2>";
     h += r.stations.map(s => {
       const u = use[s.id];
-      return "<div class='card' style='border-left-color:" +
-        (u ? (colors[u.color] || "#4a8f4e") : "#39506a") + "'>" +
+      return "<div class='card stn-btn' data-st='" + s.id +
+        "' style='border-left-color:" +
+        (u ? (colors[u.color] || "#4a8f4e") : "#39506a") + ";cursor:pointer'>" +
         "<b>" + esc(s.label) + "</b> <span class='when2'>" + esc(s.type) + "</span>" +
         (u ? "<span class='st'><b>" + esc(u.skill || u.course || "") + "</b></span>" +
              (u.supplies ? "<span class='st sup'>" + esc(u.supplies) + "</span>" : "")
@@ -372,6 +462,10 @@ function side() {
     h += "<p class='empty' style='margin-top:14px'>No beds or tables recorded " +
          "for this room yet.</p>";
   }
+  h += "<p><button class='btn2 small ghost' data-add='bed'>+ Bed</button>" +
+       "<button class='btn2 small ghost' data-add='table'>+ Table</button>" +
+       "<button class='btn2 small ghost' data-add='trainer'>+ Trainer</button>" +
+       "<button class='btn2 small ghost' id='skLib'>Skills</button></p>";
 
   const kept = keptIn(r.id);
   if (kept.length) {
@@ -401,6 +495,615 @@ function side() {
   $("side").innerHTML = h;
 }
 
+
+/* ================= 3D and walk-through ================= */
+// Rooms, walls and furniture built from the same floorplan the 2D map uses,
+// coloured live by the day's bookings. Map stays SVG because it prints.
+const S3 = 1/32, WALL_H = 2.7, WALL_T = 0.11;
+let mode = "map";
+let scene, cam3, camW, renderer, raf = null, world3 = null, picks = [], labels3 = [];
+let ceilings = [];
+let orbit = { yaw: -0.9, pitch: 0.62, dist: 60, cx: 0, cz: 0, framed: false };
+let walk  = { x: 0, z: 0, yaw: 0, pitch: 0, h: 1.62, placed: false };
+const held = {};
+
+function glReady() { return typeof THREE !== "undefined"; }
+
+function initGL() {
+  if (renderer || !glReady()) return;
+  const host = document.getElementById("gl");
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  host.appendChild(renderer.domElement);
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d1b2a);
+  scene.fog = new THREE.Fog(0x0d1b2a, 40, 150);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.05));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.5);
+  sun.position.set(18, 34, 12);
+  scene.add(sun);
+  cam3 = new THREE.PerspectiveCamera(52, 1, 0.1, 400);
+  camW = new THREE.PerspectiveCamera(72, 1, 0.05, 300);
+  bindGL(host);
+  sizeGL();
+  window.addEventListener("resize", sizeGL);
+}
+
+function sizeGL() {
+  if (!renderer) return;
+  const host = document.getElementById("gl");
+  const w = host.clientWidth || 1, h = host.clientHeight || 1;
+  renderer.setSize(w, h, false);
+  cam3.aspect = w / h; cam3.updateProjectionMatrix();
+  camW.aspect = w / h; camW.updateProjectionMatrix();
+}
+
+const box = (w, h, d, col) =>
+  new THREE.Mesh(new THREE.BoxGeometry(w, h, d),
+                 new THREE.MeshLambertMaterial({ color: col }));
+
+// A room label that always faces the camera.
+function tag(text, col) {
+  const c = document.createElement("canvas");
+  const g = c.getContext("2d");
+  g.font = "bold 46px Segoe UI, system-ui, sans-serif";
+  c.width = Math.ceil(g.measureText(text).width) + 36;
+  c.height = 72;
+  const g2 = c.getContext("2d");
+  g2.font = "bold 46px Segoe UI, system-ui, sans-serif";
+  g2.fillStyle = "rgba(10,20,32,.72)";
+  g2.fillRect(0, 0, c.width, c.height);
+  g2.fillStyle = col || "#dce8f3";
+  g2.textBaseline = "middle";
+  g2.fillText(text, 18, 38);
+  const t = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
+  t.scale.set(c.width / 46 * 0.62, 72 / 46 * 0.62, 1);
+  return t;
+}
+
+function wallSeg(x1, z1, x2, z2, col) {
+  const dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz);
+  if (len < 0.02) return null;
+  const m = box(len, WALL_H, WALL_T, col == null ? 0x35506b : col);
+  m.position.set((x1 + x2) / 2, WALL_H / 2, (z1 + z2) / 2);
+  m.rotation.y = -Math.atan2(dz, dx);
+  return m;
+}
+
+// A wall minus its doorway: two pieces with a gap.
+function wallWithDoors(x1, z1, x2, z2, doors, col, out) {
+  const len = Math.hypot(x2 - x1, z2 - z1);
+  if (!doors || !doors.length) { const w = wallSeg(x1,z1,x2,z2,col); if (w) out.push(w); return; }
+  const cuts = doors.map(d => {
+    const t = d.t == null ? 0.5 : d.t, dw = (d.w || 1.2);
+    return [Math.max(0, t * len - dw / 2), Math.min(len, t * len + dw / 2)];
+  }).sort((a, b) => a[0] - b[0]);
+  const ux = (x2 - x1) / len, uz = (z2 - z1) / len;
+  let at = 0;
+  for (const [a, b] of cuts) {
+    if (a > at) { const w = wallSeg(x1 + ux*at, z1 + uz*at, x1 + ux*a, z1 + uz*a, col);
+                  if (w) out.push(w); }
+    at = Math.max(at, b);
+  }
+  if (at < len) { const w = wallSeg(x1 + ux*at, z1 + uz*at, x2, z2, col); if (w) out.push(w); }
+}
+
+// Does a removed-wall "cut" cover this segment?
+function cutCovers(cuts, ax, fix, a, b) {
+  return (cuts || []).some(c => c.ax === ax && Math.abs(c.fix - fix) < 0.35 &&
+    a >= c.a - 0.35 && b <= c.b + 0.35);
+}
+
+function buildWorld() {
+  if (!scene || !plan) return;
+  if (world3) { scene.remove(world3); }
+  world3 = new THREE.Group();
+  picks = []; labels3 = []; ceilings = [];
+  const U = plan.unit || 32, T = plan.types || {}, OFF = plan.typeOff || {};
+  const B = plan.bounds;
+  orbit.cx = ((B.x1 + B.x2) / 2) * S3;
+  orbit.cz = ((B.y1 + B.y2) / 2) * S3;
+  if (!orbit.framed) {
+    // Fit the whole building in view the first time, rather than guessing.
+    const bw = (B.x2 - B.x1) * S3, bd = (B.y2 - B.y1) * S3;
+    orbit.dist = Math.max(bw, bd) * 1.05;
+    orbit.framed = true;
+  }
+
+  // one floor slab for the whole building
+  const fw = (B.x2 - B.x1) * S3 + 6, fd = (B.y2 - B.y1) * S3 + 6;
+  const slab = box(fw, 0.12, fd, 0x16263a);
+  slab.position.set(orbit.cx, -0.06, orbit.cz);
+  world3.add(slab);
+
+  for (const pr of plan.rooms) {
+    const x0 = pr.x1 * S3, z0 = pr.y1 * S3;
+    const w = (pr.x2 - pr.x1) * S3, d = (pr.y2 - pr.y1) * S3;
+
+    // which board columns live in this footprint
+    const mine = rooms.filter(r => r.active !== false && r.geom &&
+      r.geom.x1 === pr.x1 && r.geom.y1 === pr.y1 &&
+      r.geom.x2 === pr.x2 && r.geom.y2 === pr.y2)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    const n = Math.max(1, mine.length), cw = w / n;
+    for (let i = 0; i < n; i++) {
+      const r = mine[i] || null;
+      const st = r ? roomState(r) : { fill: "#13243a" };
+      const f = box(cw - 0.06, 0.08, d - 0.06, new THREE.Color(st.fill).getHex());
+      f.position.set(x0 + cw * i + cw / 2, 0.04, z0 + d / 2);
+      f.userData = { roomId: r ? r.id : null };
+      world3.add(f);
+      if (r) picks.push(f);
+      const label = tag(r ? (r.label || pr.id) : pr.id,
+                        r ? "#ffffff" : "#8fb3cc");
+      label.position.set(x0 + cw * i + cw / 2, 2.35, z0 + d / 2);
+      label.userData = { roomId: r ? r.id : null };
+      label.visible = mode !== "walk";      // they hang through walls otherwise
+      labels3.push(label);
+      world3.add(label);
+      if (r) picks.push(label);
+    }
+
+    // A ceiling, so walking reads as being inside a room rather than in a
+    // roofless box. Hidden in the other modes, which need to see in.
+    const cap3 = box(w - 0.06, 0.1, d - 0.06, 0x1a2c42);
+    cap3.position.set(x0 + w / 2, WALL_H + 0.05, z0 + d / 2);
+    cap3.visible = false;
+    ceilings.push(cap3);
+    world3.add(cap3);
+
+    // perimeter, with doorways cut out and removed walls honoured
+    const ws = [];
+    const doorsOn = side => (pr.doors || []).filter(dd => dd.side === side);
+    if (!cutCovers(plan.cuts, "z", z0, x0, x0 + w))
+      wallWithDoors(x0, z0, x0 + w, z0, doorsOn("n"), null, ws);
+    if (!cutCovers(plan.cuts, "z", z0 + d, x0, x0 + w))
+      wallWithDoors(x0, z0 + d, x0 + w, z0 + d, doorsOn("s"), null, ws);
+    if (!cutCovers(plan.cuts, "x", x0, z0, z0 + d))
+      wallWithDoors(x0, z0, x0, z0 + d, doorsOn("w"), null, ws);
+    if (!cutCovers(plan.cuts, "x", x0 + w, z0, z0 + d))
+      wallWithDoors(x0 + w, z0, x0 + w, z0 + d, doorsOn("e"), null, ws);
+    ws.forEach(m => world3.add(m));
+
+    // furniture
+    const use = r0 => { const u = {}; (mine||[]).forEach(r => Object.assign(u, stationUse(r.id))); return u; };
+    const assigned = use();
+    for (const p of (pr.props || [])) {
+      const spec = T[p.t] || { w: 0.6, h: 0.6, l: 0.6, c: 0x7a8794 };
+      const sc = p.s || 1;
+      const bw = (p.mw || spec.w) * sc, bh = (p.mh || spec.h) * sc,
+            bl = (p.ml || spec.l) * sc;
+      const a = assigned[p.id];
+      const col = a ? new THREE.Color(colors[a.color] || "#4a8f4e").getHex() : spec.c;
+      const m = box(bw, bh, bl, col);
+      const lift = (p.elev != null ? p.elev : (OFF[p.t] || 0));
+      m.position.set(x0 + p.x, lift + bh / 2 + 0.08, z0 + p.z);
+      m.rotation.y = -(p.r || 0) * Math.PI / 180;
+      m.userData = { stationId: p.id, roomFoot: pr.id };
+      world3.add(m);
+      picks.push(m);
+    }
+  }
+
+  // walls the model added by hand
+  (plan.walls || []).forEach(w => {
+    const ws = [];
+    wallWithDoors(w.x1, w.z1, w.x2, w.z2, w.doors, 0x31485f, ws);
+    ws.forEach(m => world3.add(m));
+  });
+
+  // a grid on the floor so walking reads as movement
+  if (!world3.getObjectByName("grid")) {
+    const grid = new THREE.GridHelper(Math.max(fw, fd), Math.round(Math.max(fw, fd)),
+                                      0x2a3f55, 0x1d2d42);
+    grid.name = "grid";
+    grid.position.set(orbit.cx, 0.02, orbit.cz);
+    world3.add(grid);
+  }
+
+  ceilings.forEach(c => c.visible = mode === "walk");
+  scene.add(world3);
+  if (!walk.placed) homeWalk();
+}
+
+// Stand in the middle of the biggest teaching room, looking across it.
+function homeWalk() {
+  const best = (plan.rooms || [])
+    .filter(pr => (pr.props || []).some(p => p.t === "bed"))
+    .sort((a, b) => ((b.x2-b.x1)*(b.y2-b.y1)) - ((a.x2-a.x1)*(a.y2-a.y1)))[0];
+  if (best) {
+    // Stand just inside one end and look down the length of the room: far more
+    // to see than standing in the middle facing a blank wall.
+    const x0 = best.x1 * S3, z0 = best.y1 * S3;
+    const w = (best.x2 - best.x1) * S3, d = (best.y2 - best.y1) * S3;
+    if (w >= d) { walk.x = x0 + 1.6; walk.z = z0 + d / 2; walk.yaw = -Math.PI / 2; }
+    else        { walk.x = x0 + w / 2; walk.z = z0 + 1.6; walk.yaw = Math.PI; }
+    walk.pitch = -0.12;
+  } else { walk.x = orbit.cx; walk.z = orbit.cz; walk.yaw = 0; walk.pitch = -0.1; }
+  walk.placed = true;
+}
+
+function placeCam() {
+  if (mode === "walk") {
+    camW.position.set(walk.x, walk.h, walk.z);
+    camW.rotation.set(walk.pitch, walk.yaw, 0, "YXZ");
+    return camW;
+  }
+  const p = mode === "map" ? 1.45 : orbit.pitch;
+  cam3.position.set(
+    orbit.cx + Math.cos(orbit.yaw) * Math.cos(p) * orbit.dist,
+    Math.sin(p) * orbit.dist,
+    orbit.cz + Math.sin(orbit.yaw) * Math.cos(p) * orbit.dist);
+  cam3.lookAt(orbit.cx, 0, orbit.cz);
+  return cam3;
+}
+
+function whereAmI() {
+  if (!plan) return null;
+  const U = plan.unit || 32;
+  const px = walk.x / S3, pz = walk.z / S3;
+  const pr = (plan.rooms || []).find(r =>
+    px >= r.x1 && px <= r.x2 && pz >= r.y1 && pz <= r.y2);
+  if (!pr) return { name: "Hallway", sub: "" };
+  const mine = rooms.filter(r => r.active !== false && r.geom &&
+    r.geom.x1 === pr.x1 && r.geom.y1 === pr.y1);
+  let r = mine[0];
+  if (mine.length > 1) {
+    const i = Math.min(mine.length - 1,
+      Math.floor((px - pr.x1) / ((pr.x2 - pr.x1) / mine.length)));
+    r = mine[i];
+  }
+  if (!r) return { name: pr.id, sub: pr.name || "" };
+  const bk = bookingsFor(r.id);
+  return { name: r.label || r.id,
+           sub: bk.length ? bk.map(b => b.course).filter(Boolean).join(", ")
+                          : (r.roomName || "") };
+}
+
+let whereTick = 0;
+function loop() {
+  raf = requestAnimationFrame(loop);
+  if (mode === "walk") {
+    if (++whereTick % 12 === 0) {
+      const w = whereAmI();
+      const el = document.getElementById("youAre");
+      if (w && el) el.innerHTML = esc(w.name) +
+        (w.sub ? "<small>" + esc(w.sub) + "</small>" : "");
+    }
+    const sp = 0.085;
+    const fx = Math.sin(walk.yaw), fz = Math.cos(walk.yaw);
+    if (held.f) { walk.x -= fx * sp; walk.z -= fz * sp; }
+    if (held.b) { walk.x += fx * sp; walk.z += fz * sp; }
+    if (held.l) { walk.x -= fz * sp; walk.z += fx * sp; }
+    if (held.r) { walk.x += fz * sp; walk.z -= fx * sp; }
+  }
+  renderer.render(scene, placeCam());
+}
+
+function bindGL(host) {
+  let drag = null;
+  const pt = e => e.touches ? e.touches[0] : e;
+  host.addEventListener("pointerdown", e => {
+    drag = { x: e.clientX, y: e.clientY, moved: 0 };
+    host.setPointerCapture(e.pointerId);
+  });
+  host.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    drag.moved += Math.abs(dx) + Math.abs(dy);
+    drag.x = e.clientX; drag.y = e.clientY;
+    if (mode === "walk") {
+      walk.yaw -= dx * 0.005;
+      walk.pitch = Math.max(-1.2, Math.min(1.2, walk.pitch - dy * 0.005));
+    } else {
+      orbit.yaw += dx * 0.006;
+      orbit.pitch = Math.max(0.12, Math.min(1.5, orbit.pitch + dy * 0.005));
+    }
+  });
+  host.addEventListener("pointerup", e => {
+    const was = drag; drag = null;
+    if (was && was.moved < 6) pickAt(e);
+  });
+  host.addEventListener("wheel", e => {
+    e.preventDefault();
+    orbit.dist = Math.max(5, Math.min(220, orbit.dist * (1 + Math.sign(e.deltaY) * 0.1)));
+  }, { passive: false });
+
+  document.querySelectorAll("#pad button").forEach(b => {
+    const k = b.dataset.k;
+    const on = e => { e.preventDefault(); held[k] = true; };
+    const off = e => { e.preventDefault(); held[k] = false; };
+    b.addEventListener("pointerdown", on);
+    b.addEventListener("pointerup", off);
+    b.addEventListener("pointerleave", off);
+  });
+  addEventListener("keydown", e => {
+    if (mode === "walk" && (e.key === "r" || e.key === "R")) {
+      walk.placed = false; homeWalk(); return;
+    }
+    const m = { w:"f", s:"b", a:"l", d:"r", ArrowUp:"f", ArrowDown:"b",
+                ArrowLeft:"l", ArrowRight:"r" }[e.key];
+    if (m) { held[m] = true; if (mode === "walk") e.preventDefault(); }
+  });
+  addEventListener("keyup", e => {
+    const m = { w:"f", s:"b", a:"l", d:"r", ArrowUp:"f", ArrowDown:"b",
+                ArrowLeft:"l", ArrowRight:"r" }[e.key];
+    if (m) held[m] = false;
+  });
+}
+
+function pickAt(e) {
+  const host = document.getElementById("gl");
+  const rect = host.getBoundingClientRect();
+  const m = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(m, placeCam());
+  const hit = ray.intersectObjects(picks, false)[0];
+  if (!hit) return;
+  const u = hit.object.userData || {};
+  if (u.stationId) {
+    const r = rooms.find(x => (x.stations || []).some(st => st.id === u.stationId));
+    if (r) { picked = r.id; side(); openStation(r.id, u.stationId); return; }
+  }
+  if (u.roomId) { picked = u.roomId; side(); }
+}
+
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll("#modes button").forEach(b =>
+    b.className = b.dataset.m === m ? "on" : "");
+  document.body.classList.toggle("walking", m === "walk");
+  const svg = document.getElementById("svg"), gl = document.getElementById("gl");
+  const hint = document.getElementById("hint3d");
+  document.getElementById("youAre").style.display = m === "walk" ? "block" : "none";
+  if (m === "map") {
+    svg.classList.remove("off"); gl.classList.add("off");
+    hint.style.display = "none";
+    if (raf) { cancelAnimationFrame(raf); raf = null; }
+    draw();
+    return;
+  }
+  svg.classList.add("off"); gl.classList.remove("off");
+  initGL();
+  labels3.forEach(l => l.visible = m !== "walk");
+  if (!glReady()) {
+    hint.style.display = "block";
+    hint.textContent = "The 3D library could not load. The 2D map still works.";
+    return;
+  }
+  buildWorld();
+  sizeGL();
+  hint.style.display = "block";
+  labels3.forEach(l => l.visible = m !== "walk");
+  ceilings.forEach(c => c.visible = m === "walk");
+  hint.textContent = m === "walk"
+    ? "Drag to look · arrows or W A S D to move · tap a bed for its setup · R to go back to the start"
+    : "Drag to turn · scroll to zoom · tap a room or a bed";
+  if (!raf) loop();
+}
+
+document.querySelectorAll("#modes button").forEach(b =>
+  b.onclick = () => setMode(b.dataset.m));
+
+
+/* ============ editing a bed or table, from the floor ============ */
+function paintAuth() {
+  const w = $("who");
+  if (!w) return;
+  w.className = user ? "on" : "";
+  w.title = user ? ("Signed in as " + user.email + " — click to sign out")
+                 : "Staff sign in";
+  if (stationOpen) openStation(stationOpen.roomId, stationOpen.stationId);
+  else if (picked) side();
+  draw();
+}
+
+$("who").onclick = () => {
+  if (user) { if (confirm("Sign out of editing?")) signOut(auth); return; }
+  signInPanel();
+};
+
+function signInPanel(then) {
+  $("side").innerHTML =
+    "<button class='back' id='bk'>&#8249; Back</button>" +
+    "<h2>Staff sign in</h2><div class='f2'>" +
+    "<label>Email</label><input id='li_u' type='email'>" +
+    "<label>Password</label><input id='li_p' type='password'>" +
+    "<p><button class='btn2' id='li_go'>Sign in</button></p>" +
+    "<p class='empty' id='li_e'></p></div>";
+  $("bk").onclick = () => { if (picked) side(); else $("side").innerHTML =
+    "<p class='empty'>Tap a room to see what is set up in it.</p>"; };
+  $("li_go").onclick = async () => {
+    try {
+      await signInWithEmailAndPassword(auth, $("li_u").value, $("li_p").value);
+      if (then) then();
+    } catch (e) { $("li_e").textContent = e.message; }
+  };
+}
+
+const skillByName = n => skills.find(k =>
+  (k.name||"").toLowerCase() === String(n||"").toLowerCase());
+const skillSupplies = k => (k.items||[])
+  .map(i => i.name + (i.qty > 1 ? " ×" + i.qty : "")).join(", ");
+
+// One bed or table: what it is, and what happens at it today.
+function openStation(roomId, stationId) {
+  const r = roomOf(roomId);
+  if (!r) return;
+  const st = (r.stations||[]).find(x => x.id === stationId);
+  if (!st) { picked = roomId; side(); return; }
+  stationOpen = { roomId, stationId };
+  picked = roomId;
+
+  const bk = bookingsFor(roomId);
+  const owner = bk.find(b => (b.stations||[]).some(x => x.id === stationId)) || bk[0];
+  const cur = owner ? (owner.stations||[]).find(x => x.id === stationId) || {} : {};
+  const fits = skills.filter(k => !k.kind || k.kind === st.type);
+  const known = skillByName(cur.skill);
+
+  let h = "<button class='back' id='bk'>&#8249; " + esc(r.label || roomId) + "</button>" +
+    "<h2>" + esc(st.label) + "</h2>" +
+    "<div class='sub'>" + esc(st.type) + " in " + esc(r.label || roomId) + "</div>";
+
+  if (!user) {
+    h += "<div class='card'>" +
+      (cur.skill ? "<b>" + esc(cur.skill) + "</b>" : "<b>Nothing assigned today</b>") +
+      (cur.supplies ? "<span class='st sup'>" + esc(cur.supplies) + "</span>" : "") +
+      "</div><button class='btn2' id='needLogin'>Sign in to change this</button>";
+    $("side").innerHTML = h;
+    $("bk").onclick = () => { stationOpen = null; side(); };
+    $("needLogin").onclick = () => signInPanel(() => openStation(roomId, stationId));
+    return;
+  }
+
+  h += "<div class='f2'>";
+  if (!owner) {
+    h += "<p class='empty'>Nothing is booked in this room " +
+         (slot ? "in this block" : "today") + ", so there is no session to " +
+         "attach a skill to. Book the room on the week board first.</p>";
+  } else {
+    h += "<label>Session</label><div class='card' style='border-left-color:" +
+      (colors[owner.color] || "#7a8794") + "'><b>" + esc(owner.course || "") +
+      "</b>" + (owner.block ? " <span class='when2'>" + esc(owner.block) +
+      "</span>" : "") + "</div>";
+    h += "<label>Skill at this station</label>" +
+      "<select id='sk_pick'><option value=''>— nothing —</option>" +
+      fits.map(k => "<option" + (known && known.id === k.id ? " selected" : "") +
+        ">" + esc(k.name) + "</option>").join("") +
+      "<option value='__other'" + (cur.skill && !known ? " selected" : "") +
+      ">Something else…</option></select>" +
+      "<input id='sk_free' placeholder='Skill' value='" + esc(cur.skill || "") +
+      "'" + (known ? " hidden" : "") + ">" +
+      "<label>Supplies</label><input id='sk_sup' value='" +
+      esc(cur.supplies || "") + "'>" +
+      "<p><button class='btn2 small ghost' id='sk_drill'>Drill down</button>" +
+      "<button class='btn2 small ghost' id='sk_fill'>Fill supplies from the skill</button></p>" +
+      "<p><button class='btn2' id='sk_save'>Save to this session</button></p>";
+  }
+
+  h += "<hr style='border:0;border-top:1px solid var(--line);margin:16px 0'>" +
+    "<label>Rename this " + esc(st.type) + "</label>" +
+    "<input id='st_label' value='" + esc(st.label) + "'>" +
+    "<label>It is a</label><select id='st_type'>" +
+    ["bed","table","chair","trainer","other"].map(t =>
+      "<option" + (st.type === t ? " selected" : "") + ">" + t + "</option>").join("") +
+    "</select>" +
+    "<p><button class='btn2' id='st_save'>Save</button>" +
+    "<button class='btn2 danger' id='st_del'>Remove it</button></p></div>";
+
+  $("side").innerHTML = h;
+  $("bk").onclick = () => { stationOpen = null; side(); };
+
+  const pick = $("sk_pick");
+  if (pick) {
+    pick.onchange = () => {
+      const free = $("sk_free"), sup = $("sk_sup");
+      if (pick.value === "__other") { free.hidden = false; free.value = ""; free.focus(); return; }
+      if (!pick.value) { free.hidden = false; free.value = ""; return; }
+      free.hidden = true; free.value = pick.value;
+      const k = skillByName(pick.value);
+      if (k && !sup.value.trim()) sup.value = skillSupplies(k);
+    };
+    $("sk_fill").onclick = () => {
+      const k = skillByName($("sk_free").value || pick.value);
+      if (k) $("sk_sup").value = skillSupplies(k);
+    };
+    $("sk_drill").onclick = () => skillSheet($("sk_free").value || pick.value,
+                                             roomId, stationId);
+    $("sk_save").onclick = async () => {
+      const name = ($("sk_free").value || "").trim();
+      const rest = (owner.stations || []).filter(x => x.id !== stationId);
+      const next = name || $("sk_sup").value.trim()
+        ? rest.concat([{ id: stationId, label: st.label, type: st.type,
+                         skill: name, supplies: $("sk_sup").value.trim() }])
+        : rest;
+      await updateDoc(doc(db,"bookings",owner.id),
+        { stations: next, updatedBy: user.email, updatedAt: serverTimestamp() });
+      openStation(roomId, stationId);
+    };
+  }
+
+  $("st_save").onclick = async () => {
+    const next = (r.stations||[]).map(x => x.id === stationId
+      ? Object.assign({}, x, { label: $("st_label").value.trim() || x.label,
+                               type: $("st_type").value })
+      : x);
+    await updateDoc(doc(db,"rooms",roomId), { stations: next });
+    const local = roomOf(roomId); if (local) local.stations = next;
+    openStation(roomId, stationId);
+  };
+
+  $("st_del").onclick = async () => {
+    if (!confirm("Remove " + st.label + " from " + (r.label||roomId) +
+                 "? Sessions keep what was assigned to it.")) return;
+    const next = (r.stations||[]).filter(x => x.id !== stationId);
+    await updateDoc(doc(db,"rooms",roomId), { stations: next });
+    const local = roomOf(roomId); if (local) local.stations = next;
+    stationOpen = null; side(); draw();
+  };
+}
+
+// Add a bed or table to a room, straight from the floor.
+async function addStation(roomId, type) {
+  if (!user) return signInPanel(() => addStation(roomId, type));
+  const r = roomOf(roomId);
+  if (!r) return;
+  const list = (r.stations || []).slice();
+  const n = list.filter(x => x.type === type).length + 1;
+  const pr = (plan.rooms || []).find(x =>
+    r.geom && x.x1 === r.geom.x1 && x.y1 === r.geom.y1);
+  const w = pr ? (pr.x2 - pr.x1) / (plan.unit || 32) : 6;
+  const d = pr ? (pr.y2 - pr.y1) / (plan.unit || 32) : 6;
+  list.push({ id: type + n + "_" + Math.random().toString(36).slice(2,6),
+              type, label: type.charAt(0).toUpperCase() + type.slice(1) + " " + n,
+              x: Math.min(w - 0.8, 1 + (n % 4) * 1.6),
+              z: Math.min(d - 0.8, 1.4 + Math.floor(n / 4) * 2.2), rot: 0 });
+  await updateDoc(doc(db,"rooms",roomId), { stations: list });
+  const local = roomOf(roomId); if (local) local.stations = list;
+  side(); draw();
+}
+
+// Everything a skill needs, checked against stock.
+function skillSheet(name, backRoom, backStation) {
+  const list = name ? [skillByName(name)].filter(Boolean) : skills;
+  let h = "<button class='back' id='bk'>&#8249; Back</button>";
+  if (!list.length) {
+    h += "<p class='empty'>No skills in the library yet. Add them in Settings, " +
+         "under Skills &amp; what each one needs.</p>";
+  } else {
+    h += "<h2>" + (name ? esc(name) : "Skill library") + "</h2>";
+    h += list.map(k => {
+      const rows = (k.items||[]).map(it => {
+        const inv = inventory.find(i =>
+          (i.name||"").toLowerCase() === (it.name||"").toLowerCase());
+        let note = "not in the inventory", col = "#8fb3cc";
+        if (inv) {
+          const have = inv.qty || 0;
+          note = have + " on hand" + (inv.room ? ", in " + roomLabelOf(inv.room) : "");
+          if (itemLow(inv)) { note += " — LOW"; col = "#ff9e9e"; }
+          else if (have < (it.qty||1)) { note += " — not enough"; col = "#ff9e9e"; }
+          else col = "#8fe0a0";
+        }
+        return "<span class='st'><b style='color:" + col + "'>" + esc(it.name) +
+          ((it.qty||1) > 1 ? " ×" + it.qty : "") + "</b> " + esc(note) + "</span>";
+      }).join("") || "<span class='st'>No supplies listed.</span>";
+      return "<div class='card' style='border-left-color:#4f9ad6'><b>" +
+        esc(k.name) + "</b>" + (k.mins ? " <span class='when2'>" + k.mins +
+        " min</span>" : "") + rows +
+        (k.note ? "<span class='st sup'>" + esc(k.note) + "</span>" : "") + "</div>";
+    }).join("");
+    if (name) h += "<button class='btn2 ghost' id='allSk'>See every skill</button>";
+  }
+  $("side").innerHTML = h;
+  $("bk").onclick = () => backRoom ? openStation(backRoom, backStation) : side();
+  const all = $("allSk");
+  if (all) all.onclick = () => skillSheet(null, backRoom, backStation);
+}
+
 /* ---------- day and block controls ---------- */
 function setDay(d) { day = d; picked = picked; watchDay(); draw(); }
 $("prev").onclick  = () => setDay(iso(addDays(new Date(day + "T00:00:00"), -1)));
@@ -408,7 +1111,6 @@ $("next").onclick  = () => setDay(iso(addDays(new Date(day + "T00:00:00"),  1)))
 $("today").onclick = () => setDay(iso(new Date()));
 $("date").onchange = e => { if (e.target.value) setDay(e.target.value); };
 $("slot").onchange = e => { slot = e.target.value; draw(); };
-$("board").onclick = () => location.href = "display.html";
 
 setInterval(() => {
   $("clock").textContent =
@@ -417,7 +1119,7 @@ setInterval(() => {
 $("clock").textContent =
   new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
 
-console.log("floor.html build 2026-11-16-floor2");
+console.log("floor.html build 2026-11-17-3d");
 watchDay();
 draw();
 </script>
