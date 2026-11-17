@@ -292,6 +292,14 @@
       Names that match something in the inventory will show how many the lab has
       and flag low stock.
     </p>
+    <label>Setup steps &mdash; one per line (optional)</label>
+    <textarea id="sk_steps" rows="4" style="width:100%;padding:8px;
+      border:1px solid #c7d4e3;border-radius:4px;font-family:inherit;font-size:14px"
+      placeholder="Raise the bed to waist height&#10;Prime the tubing&#10;Put the arm trainer on the overbed table"></textarea>
+    <p class="hint" style="margin-top:6px">
+      These become tick-boxes on the setup checklist, above the supplies, so
+      whoever sets the room up can see what is done and what is still pending.
+    </p>
     <label>Notes shown with the skill (optional)</label>
     <input id="sk_note" type="text" placeholder="Prime tubing before the group arrives">
     <p style="margin-top:14px">
@@ -514,12 +522,14 @@ function drawSkills() {
 
 function openSkill(i) {
   skEditing = i;
-  const k = i < 0 ? { name:"", kind:"", mins:"", items:[], note:"" } : skills[i];
+  const k = i < 0 ? { name:"", kind:"", mins:"", items:[], steps:[], note:"" }
+                  : skills[i];
   $("skTitle").textContent = i < 0 ? "New skill" : k.name || "Skill";
   $("sk_name").value  = k.name || "";
   $("sk_kind").value  = k.kind || "";
   $("sk_mins").value  = k.mins || "";
   $("sk_items").value = lineJoin(k.items);
+  $("sk_steps").value = (k.steps || []).join("\n");
   $("sk_note").value  = k.note || "";
   $("skDel").style.display = i < 0 ? "none" : "inline-block";
   $("skDlg").showModal();
@@ -532,6 +542,8 @@ $("skSave").onclick = () => {
               kind: $("sk_kind").value,
               mins: parseInt($("sk_mins").value,10) || 0,
               items: lineParse($("sk_items").value),
+              steps: $("sk_steps").value.split(/\n+/)
+                       .map(x => x.trim()).filter(Boolean).slice(0, 40),
               note: $("sk_note").value.trim() };
   if (!k.name) { alert("Give the skill a name."); return; }
   if (skEditing < 0) skills.push(k);
@@ -786,7 +798,8 @@ $("saveBtn").onclick = async () => {
   for (const k of skills) {
     if (!(k.name||"").trim()) continue;
     const payload = { name: k.name.trim(), kind: k.kind || "", mins: k.mins || 0,
-                      items: k.items || [], note: k.note || "" };
+                      items: k.items || [], steps: k.steps || [],
+                      note: k.note || "" };
     const id = k.id ||
       k.name.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").slice(0,40);
     await setDoc(doc(db,"skills",id), payload);

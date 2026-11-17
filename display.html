@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sim Lab - Week at a Glance</title>
-<meta name="build" content="2026-11-17-skills">
+<meta name="build" content="2026-11-18-checklist">
 <style>
   :root { color-scheme:dark; --bg:#0d1b2a; --panel:#152c42; --line:#2c4257;
           --fg:#fff; --muted:#8fb3cc; --today:#17334d; --note:#ffd9a0;
@@ -272,6 +272,17 @@
               color:#eaf1f8; border-radius:12px; padding:2px 9px; font-size:12px;
               margin:3px 4px 0 0; }
   .itemchip.over { border-color:#ff9e9e; color:#ff9e9e; }
+  /* Room-setup progress, written by the floor view and only read here. */
+  i.ckmark { font-style:normal; font-weight:800; font-size:.78em;
+             margin-left:5px; opacity:.85; }
+  .setupbar { margin:7px 0 2px; font-size:13px; }
+  .setupbar .ckmark { display:inline-block; font-style:normal; font-weight:700;
+              font-size:12px; border-radius:11px; padding:2px 9px;
+              background:#0f1f30; border:1px solid #2c4257; color:#8fb3cc; }
+  .ckmark.ok  { color:#8fe0a0; border-color:#3e6b4c; }
+  .ckmark.bad { color:#ff9e9e; border-color:#7a3a3a; }
+  .setupwho { color:#8fb3cc; }
+  .setupmiss { color:#ff9e9e; font-size:12.5px; margin-top:4px; line-height:1.5; }
   .entryhead { display:flex; align-items:center; gap:8px; }
   .entryhead h3 { flex:1; }
 
@@ -383,6 +394,7 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { firebaseConfig, COLORS as FALLBACK_COLORS, DEFAULT_SETTINGS }
   from "./firebase-config.js";
+import { buildList, score, badge } from "./checklist.js";
 
 // Persistent cache: if the network drops, the board keeps showing the last
 // known schedule instead of going blank.
@@ -398,7 +410,7 @@ const auth = getAuth(fbApp);
 let user = null;
 onAuthStateChanged(auth, u => { user = u; paintAuth(); });
 const DAYS = ["Mon","Tues","Wed","Thurs","Fri","Sat","Sun"];
-console.log("display.html build 2026-11-17-skills");
+console.log("display.html build 2026-11-18-checklist");
 
 let rooms = [], bookings = [], notes = {}, offset = 0, rotating = true;
 let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
@@ -522,6 +534,19 @@ onSnapshot(query(collection(db,"bookings"),
   if (bookings.length) haveData = true;
   render();
 }, err => console.error("bookings listener:", err));
+// How far along each session's setup is. Written by the floor view; the
+// board only reads it, so a dark screen in the hallway shows what is ready.
+onSnapshot(query(collection(db,"setup"),
+                 where("date",">=",rangeStart), where("date","<=",rangeEnd)), snap => {
+  const next = {};
+  snap.docs.forEach(d => {
+    const v = d.data();
+    next[d.id] = { state: v.state || {}, notes: v.notes || {},
+                   extra: v.extra || [], by: v.by || "" };
+  });
+  setups = next;
+  render();
+}, err => console.error("setup listener:", err));
 onSnapshot(query(collection(db,"dayNotes"),
                  where("date",">=",rangeStart), where("date","<=",rangeEnd)), snap => {
   const fromCache = noteSnapshot(snap);
@@ -595,6 +620,7 @@ function weekTableHTML(weekStart, opts) {
           html += "<span class='chip " + (b.status === "tentative" ? "tentative" : "") +
                   "' style='background:" + chipBg + ";color:" + contrastOn(chipBg) + "'>" +
                   (b.icon ? esc(b.icon) + " " : "") + esc(b.course||"") +
+                  (compact ? "" : setupMark(b)) +
                   (!compact && b.block ? "<small>" + esc(b.block) + "</small>" : "") +
                   "</span>";
         });
@@ -608,6 +634,13 @@ function weekTableHTML(weekStart, opts) {
     html += "</tr>";
   }
   return html + "</table>";
+}
+
+// A quiet suffix on the chip: ticked off, part way, or something missing.
+function setupMark(b) {
+  const m = ckMark(b);
+  return m ? "<i class='ckmark" + (m === "\u26a0" ? " bad" : m === "\u2713" ? " ok" : "") +
+             "' title='Room setup'>" + m + "</i>" : "";
 }
 
 function weekRangeText(weekStart) {
@@ -734,6 +767,27 @@ function weekHasBookings(off) {
     const d = new Date(b.date+"T00:00:00");
     return d >= ws && d <= we;
   });
+}
+
+/* ---------- setup checklists ---------- */
+let setups = {};
+const setupOf = id => setups[id] || { state:{}, notes:{}, extra:[], by:"" };
+
+// Built exactly the way the floor view builds it, so the two agree.
+function ckScore(b) {
+  const su = setupOf(b.id);
+  return score(buildList(Object.assign({}, b, { __extra: su.extra || [] }),
+                         { skills, inventory, roomLabel: roomLabelOf }),
+               su.state);
+}
+// Quiet until somebody has actually started. A wall of "0/10" on every
+// booking would be noise, not news.
+function ckMark(b) {
+  const sc = ckScore(b);
+  if (!sc.total) return "";
+  if (sc.missing) return "⚠";
+  if (sc.ready) return "✓";
+  return sc.done ? sc.done + "/" + sc.total : "";
 }
 
 /* ---------- skill library ---------- */
@@ -1165,6 +1219,26 @@ function entryHtml(b, showRoom) {
         "</span>";
     }).join("") + "</div>";
   }
+  const sc = ckScore(b);
+  let ck = "";
+  if (sc.total) {
+    const su = setupOf(b.id);
+    const flagged = [];
+    buildList(Object.assign({}, b, { __extra: su.extra || [] }),
+              { skills, inventory, roomLabel: roomLabelOf })
+      .forEach(g => g.lines.forEach(l => {
+        if (su.state[l.key] === "missing")
+          flagged.push(l.text + (su.notes[l.key] ? " \u2014 " + su.notes[l.key] : ""));
+      }));
+    ck = "<div class='setupbar'><span class='ckmark " +
+      (sc.missing ? "bad" : sc.ready ? "ok" : "") + "'>" + esc(badge(sc)) +
+      "</span> <span class='setupwho'>" +
+      (sc.ready && !sc.missing ? "set up" : sc.done + " of " + sc.total + " done") +
+      (su.by ? " \u00b7 " + esc(su.by) : "") + "</span>" +
+      (flagged.length ? "<div class='setupmiss'>" +
+        flagged.map(t => "\u26a0 " + esc(t)).join("<br>") + "</div>" : "") +
+      "</div>";
+  }
   const editBtn = user
     ? "<button class='btn ghost small edit-one' data-id='" + b.id + "'>Edit</button>"
     : "";
@@ -1175,7 +1249,8 @@ function entryHtml(b, showRoom) {
          (b.status === "tentative" ? "<span class='flag'>TENTATIVE</span>" : "") +
          "</h3>" + editBtn + "</div>" +
          "<div class='when'>" + (b.block ? esc(b.block) : "Time not set") +
-         "</div>" + (rows ? "<dl class='kv'>" + rows + "</dl>" : "") + stn + itm + "</div>";
+         "</div>" + (rows ? "<dl class='kv'>" + rows + "</dl>" : "") +
+         ck + stn + itm + "</div>";
 }
 
 function openPopup(title, key, bodyHtml) {

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sim Lab - Floor View</title>
-<meta name="build" content="2026-11-17-3d">
+<meta name="build" content="2026-11-18-checklist">
 <style>
   :root { color-scheme:dark; --bg:#0d1b2a; --panel:#152c42; --line:#2c4257;
           --fg:#fff; --muted:#8fb3cc; --note:#ffd9a0; }
@@ -131,6 +131,64 @@
           background:#0f1f30; border:1px solid var(--line); margin:3px 4px 0 0; }
   .chip.over { border-color:#ff9e9e; color:#ff9e9e; }
 
+  /* ---- setup checklist ---- */
+  .ckline { display:flex; align-items:center; gap:8px; margin-top:9px;
+            flex-wrap:wrap; }
+  .pill { font-size:12px; font-weight:700; border-radius:11px; padding:3px 10px;
+          background:#13283c; border:1px solid var(--line); color:var(--muted); }
+  .pill.ok  { color:#8fe0a0; border-color:#3e6b4c; }
+  .pill.bad { color:#ff9e9e; border-color:#7a3a3a; }
+  .prog { margin:4px 0 12px; font-size:13px; color:var(--muted); }
+  .prog .bar { height:9px; border-radius:5px; background:#0f1f30;
+               border:1px solid var(--line); overflow:hidden; margin-bottom:5px; }
+  .prog .bar i { display:block; height:100%; background:#4a8f4e;
+                 transition:width .2s; }
+  .prog b.bad { color:#ff9e9e; }
+  input.who { width:100%; padding:9px 10px; border-radius:6px; font-size:15px;
+              border:1px solid #8fa6bd; background:#fff; color:#102a43;
+              margin-bottom:12px; font-family:inherit; }
+  .ckg { margin-bottom:14px; }
+  .ckg h3 { margin:0 0 6px; font-size:15px; }
+  .ckg h3 span { color:var(--muted); font-weight:600; font-size:13px; }
+  .cknote { color:var(--note); font-size:13px; margin:0 0 6px; }
+  /* Big rows: these get tapped with gloves on, on a wall tablet. */
+  .ckrow { display:flex; align-items:flex-start; gap:10px; cursor:pointer;
+           background:#0f1f30; border:1px solid var(--line); border-left-width:5px;
+           border-left-color:#39506a; border-radius:7px; padding:11px 10px;
+           margin-bottom:6px; -webkit-tap-highlight-color:transparent; }
+  .ckrow:hover { border-color:var(--muted); }
+  .ckrow .box { flex:none; width:26px; height:26px; border-radius:6px;
+                border:2px solid #4a6a88; display:flex; align-items:center;
+                justify-content:center; font-size:16px; font-weight:800;
+                line-height:1; }
+  .ckrow .txt { flex:1 1 auto; font-size:14.5px; line-height:1.35;
+                word-break:break-word; }
+  .ckrow .txt b { color:#fff; }
+  .ckrow .txt small { display:block; color:var(--muted); font-size:12px;
+                      margin-top:2px; }
+  .ckrow .txt small.short, .ckrow .txt small.low { color:#ff9e9e; }
+  .ckrow .txt small.ok { color:#8fe0a0; }
+  .ckrow .txt small.nt { color:var(--note); }
+  .ckrow.step .txt { font-weight:600; }
+  .ckrow.done { border-left-color:#4a8f4e; }
+  .ckrow.done .box { background:#4a8f4e; border-color:#4a8f4e; color:#fff; }
+  .ckrow.done .txt { opacity:.62; }
+  .ckrow.missing { border-left-color:#ff9e9e; }
+  .ckrow.missing .box { background:#8f3a3a; border-color:#ff9e9e; color:#fff; }
+  .mini { flex:none; width:32px; height:32px; border-radius:7px; cursor:pointer;
+          background:transparent; border:1px solid var(--line);
+          color:var(--muted); font-size:14px; font-family:inherit; padding:0; }
+  .mini:hover { color:#fff; border-color:var(--muted); }
+  .cked { margin:-3px 0 7px 36px; }
+  .cked input { width:100%; padding:8px; border-radius:5px; font-size:14px;
+                border:1px solid #8fa6bd; background:#fff; color:#102a43;
+                font-family:inherit; }
+  .ckadd { display:flex; gap:6px; margin:12px 0 4px; }
+  .ckadd input { flex:1 1 auto; min-width:0; padding:9px; border-radius:5px;
+                 font-size:14px; border:1px solid #8fa6bd; background:#fff;
+                 color:#102a43; font-family:inherit; }
+  .ckadd button { margin:0; }
+
   #legend { display:flex; gap:14px; flex-wrap:wrap; padding:7px 16px;
             background:var(--panel); border-top:1px solid var(--line);
             font-size:13px; color:var(--muted); }
@@ -210,6 +268,8 @@
   <span><i style="background:#7a1c1c"></i> Over capacity</span>
   <span><i style="background:#2f3f52"></i> Not on the board</span>
   <span><i style="background:#ff9e9e"></i> Supplies low</span>
+  <span style="color:#8fe0a0">&#10003; Set up</span>
+  <span style="color:#ffbe76">&#9888; Something missing</span>
   <span>Beds and tables are drawn where they stand.</span>
 </div>
 
@@ -218,12 +278,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
          memoryLocalCache, collection, doc, query, where, onSnapshot,
-         updateDoc, addDoc, serverTimestamp }
+         updateDoc, addDoc, setDoc, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { firebaseConfig, COLORS as FALLBACK_COLORS, DEFAULT_SETTINGS }
   from "./firebase-config.js";
+import { buildList, score } from "./checklist.js";
 
 const fbApp = initializeApp(firebaseConfig);
 let db;
@@ -286,8 +347,26 @@ onSnapshot(doc(db,"settings","floorplan"), snap => {
   draw();
 }, e => console.error("floorplan:", e));
 
+let setups = {};
+let ckOpen = null;              // booking id while the setup checklist is open
+let unsubSetup = null;
 let unsubDay = null;
 function watchDay() {
+  if (unsubSetup) unsubSetup();
+  // Who has set what up today. Its own collection so a tablet with nobody
+  // signed in can still tick things off.
+  unsubSetup = onSnapshot(query(collection(db,"setup"), where("date","==",day)),
+    snap => {
+      const next = {};
+      snap.docs.forEach(d => {
+        const v = d.data();
+        next[d.id] = { state: v.state || {}, notes: v.notes || {},
+                       extra: v.extra || [], by: v.by || "" };
+      });
+      setups = next;
+      if (ckOpen) paintChecklist(ckOpen);
+      draw();
+    }, e => console.error("setup:", e));
   if (unsubDay) unsubDay();
   unsubDay = onSnapshot(query(collection(db,"bookings"), where("date","==",day)),
     snap => {
@@ -442,6 +521,13 @@ function draw() {
       if (low)
         g += "<text class='eq' style='fill:#ff9e9e' x='" + (cell.x + w/2) +
              "' y='" + (cell.y + h - 30) + "'>\u26a0 " + low + " low</text>";
+      // How the setup is going, so the room reads at a glance from the doorway.
+      const rs = roomReady(r.id);
+      if (rs && w > 70)
+        g += "<text class='eq' style='fill:" + rs.col + ";text-anchor:end;" +
+             "font-size:" + Math.max(12, Math.min(20, fs * 0.8)) + "px' x='" +
+             (cell.x + w - 8) + "' y='" + (cell.y + fs + 4) + "'>" +
+             esc(rs.mark) + "</text>";
     }
     const sub = st.label || (r ? "" : (pr.name || ""));
     if (sub && h > 70)
@@ -456,9 +542,14 @@ function draw() {
     openStation(el.dataset.room, el.dataset.st);
   });
   svg.querySelectorAll("rect.book").forEach(el => el.onclick = () => {
-    stationOpen = null; picked = el.dataset.id; side();
+    stationOpen = null; ckOpen = null; picked = el.dataset.id; side();
   });
-  if (picked) side();
+  // Repaint the panel for the new data, but stay on whatever the person has
+  // open. Redrawing straight back to the room list threw away a half-finished
+  // checklist every time somebody else saved something.
+  if (ckOpen) paintChecklist(ckOpen);
+  else if (stationOpen) openStation(stationOpen.roomId, stationOpen.stationId);
+  else if (picked) side();
 }
 
 /* ---------- side panel ---------- */
@@ -486,6 +577,7 @@ function side() {
             "<span class='chip'>" +
             esc((inventory.find(i => i.id === x.id)||{}).name || x.name || x.id) +
             ((x.qty||1) > 1 ? " ×" + x.qty : "") + "</span>").join("") + "</div>" : "") +
+          ckStrip(b) +
           "</div>";
       }).join("")
     : "<p class='empty'>Nothing booked here " +
@@ -540,6 +632,7 @@ function side() {
   }
 
   $("side").innerHTML = h;
+  bindCkStrips();
 }
 
 
@@ -1072,8 +1165,9 @@ function openStation(roomId, stationId) {
   const r = roomOf(roomId);
   if (!r) return;
   const st = (r.stations||[]).find(x => x.id === stationId);
-  if (!st) { picked = roomId; side(); return; }
+  if (!st) { stationOpen = null; picked = roomId; side(); return; }
   stationOpen = { roomId, stationId };
+  ckOpen = null;
   picked = roomId;
 
   const bk = bookingsFor(roomId);
@@ -1090,9 +1184,12 @@ function openStation(roomId, stationId) {
     h += "<div class='card'>" +
       (cur.skill ? "<b>" + esc(cur.skill) + "</b>" : "<b>Nothing assigned today</b>") +
       (cur.supplies ? "<span class='st sup'>" + esc(cur.supplies) + "</span>" : "") +
-      "</div><button class='btn2' id='needLogin'>Sign in to change this</button>";
+      "</div>" +
+      (owner ? "<button class='btn2' id='ckGo'>Setup checklist</button>" : "") +
+      "<button class='btn2 ghost' id='needLogin'>Sign in to change this</button>";
     $("side").innerHTML = h;
     $("bk").onclick = () => { stationOpen = null; side(); };
+    if (owner) $("ckGo").onclick = () => paintChecklist(owner.id);
     $("needLogin").onclick = () => signInPanel(() => openStation(roomId, stationId));
     return;
   }
@@ -1119,7 +1216,8 @@ function openStation(roomId, stationId) {
       esc(cur.supplies || "") + "'>" +
       "<p><button class='btn2 small ghost' id='sk_drill'>Drill down</button>" +
       "<button class='btn2 small ghost' id='sk_fill'>Fill supplies from the skill</button></p>" +
-      "<p><button class='btn2' id='sk_save'>Save to this session</button></p>";
+      "<p><button class='btn2' id='sk_save'>Save to this session</button>" +
+      "<button class='btn2 ghost' id='ckGo2'>Setup checklist</button></p>";
   }
 
   h += "<hr style='border:0;border-top:1px solid var(--line);margin:16px 0'>" +
@@ -1134,6 +1232,9 @@ function openStation(roomId, stationId) {
 
   $("side").innerHTML = h;
   $("bk").onclick = () => { stationOpen = null; side(); };
+
+  const go2 = $("ckGo2");
+  if (go2 && owner) go2.onclick = () => paintChecklist(owner.id);
 
   const pick = $("sk_pick");
   if (pick) {
@@ -1241,6 +1342,256 @@ function skillSheet(name, backRoom, backStation) {
   if (all) all.onclick = () => skillSheet(null, backRoom, backStation);
 }
 
+
+/* ================= setup checklist =================
+   What a work-study sees when they walk into a room: everything this session
+   needs, in big rows they can tick off, flag as missing, or write on. It is
+   built from the skills already assigned to the beds and tables, so nobody
+   has to keep a second list in step with the first. */
+
+const CK_WHO = "simlab.who";             // their name, remembered on the tablet
+
+const setupOf = id => setups[id] || { state:{}, notes:{}, extra:[], by:"" };
+
+function ckGroups(b) {
+  return buildList(Object.assign({}, b, { __extra: setupOf(b.id).extra || [] }),
+                   { skills, inventory, roomLabel: roomLabelOf });
+}
+function ckScore(b) { return score(ckGroups(b), setupOf(b.id).state); }
+
+// The strip under a booking card: how far along, and the way in.
+function ckStrip(b) {
+  const sc = ckScore(b);
+  const pill = !sc.total ? ""
+    : "<span class='pill " + (sc.missing ? "bad" : sc.ready ? "ok" : "") + "'>" +
+      (sc.missing ? "⚠ " + sc.missing + " missing"
+       : sc.ready ? "✓ Ready"
+       : sc.done + " of " + sc.total + " done") + "</span>";
+  return "<div class='ckline'>" + pill +
+    "<button class='btn2 small' data-ck='" + b.id + "'>Setup checklist</button></div>";
+}
+// Everything clickable in the room panel. The station cards, the + buttons
+// and the skills link were drawn but never wired up, so tapping a bed in the
+// panel did nothing.
+function bindCkStrips() {
+  const host = $("side");
+  host.querySelectorAll("[data-ck]").forEach(el =>
+    el.onclick = ev => { ev.stopPropagation(); paintChecklist(el.dataset.ck); });
+  host.querySelectorAll(".stn-btn").forEach(el =>
+    el.onclick = () => openStation(picked, el.dataset.st));
+  host.querySelectorAll("[data-add]").forEach(el =>
+    el.onclick = () => user ? addStation(picked, el.dataset.add)
+                            : signInPanel(() => side()));
+  const lib = $("skLib");
+  if (lib) lib.onclick = () => skillSheet(null, null, null);
+}
+
+// The glyph drawn in a room on the map.
+function roomReady(roomId) {
+  const bk = bookingsFor(roomId).map(ckScore).filter(sc => sc.total);
+  if (!bk.length) return null;
+  if (bk.some(sc => sc.missing))
+    return { mark: "⚠", col: "#ffbe76" };
+  if (bk.every(sc => sc.ready)) return { mark: "✓", col: "#8fe0a0" };
+  const done = bk.reduce((n, sc) => n + sc.done, 0);
+  const all  = bk.reduce((n, sc) => n + sc.total, 0);
+  return done ? { mark: done + "/" + all, col: "#ffd9a0" } : null;
+}
+
+function whoNow() {
+  const el = $("ckwho");
+  const v = el ? el.value.trim() : "";
+  if (v) { try { localStorage.setItem(CK_WHO, v); } catch (e) {} }
+  if (v) return v;
+  try { return localStorage.getItem(CK_WHO) || (user ? user.email : "") || ""; }
+  catch (e) { return user ? user.email : ""; }
+}
+
+async function ckSave(b, patch) {
+  const cur = setupOf(b.id);
+  const next = Object.assign({ state:{}, notes:{}, extra:[], by:"" }, cur, patch);
+  setups[b.id] = next;                   // show it before the round trip
+  if (ckOpen === b.id) paintChecklist(b.id);
+  draw();
+  try {
+    await setDoc(doc(db, "setup", b.id), {
+      bookingId: b.id, roomId: b.roomId, date: b.date || day,
+      state: next.state, notes: next.notes, extra: next.extra,
+      by: next.by || "", at: serverTimestamp()
+    }, { merge: true });
+  } catch (e) {
+    console.error("setup save:", e);
+    alert("That tick did not save — " + e.message);
+  }
+}
+
+function paintChecklist(id) {
+  const b = bookings.find(x => x.id === id);
+  if (!b) { ckOpen = null; side(); return; }
+  // Somebody is part-way through typing a note. Their words matter more than
+  // a fresh repaint, so leave the panel alone until they are done.
+  const a = document.activeElement;
+  if (ckOpen === id && a && a.tagName === "INPUT" && $("side").contains(a) &&
+      a.id !== "ckwho") return;
+  ckOpen = id;
+  stationOpen = null;
+  picked = b.roomId;
+  const r = roomOf(b.roomId) || {};
+  const su = setupOf(id);
+  const gs = ckGroups(b);
+  const sc = score(gs, su.state);
+  const pct = sc.total ? Math.round(sc.done / sc.total * 100) : 0;
+  let saved = "";
+  try { saved = localStorage.getItem(CK_WHO) || ""; } catch (e) {}
+
+  let h = "<button class='back' id='bk'>&#8249; " + esc(r.label || b.roomId) +
+    "</button><h2>Set up: " + esc(b.course || "this session") + "</h2>" +
+    "<div class='sub'>" + esc(r.label || b.roomId) +
+    (b.block ? " &middot; " + esc(b.block) : "") +
+    (b.instructor ? " &middot; " + esc(b.instructor) : "") + "</div>";
+
+  if (sc.total) {
+    h += "<div class='prog'><div class='bar'><i style='width:" + pct +
+      "%'></i></div><span>" + sc.done + " of " + sc.total + " done" +
+      (sc.missing ? " &middot; <b class='bad'>" + sc.missing + " missing</b>" : "") +
+      "</span></div>";
+  } else {
+    h += "<p class='empty'>Nothing is assigned to this session yet. Tap a bed " +
+      "or table to give it a skill, or add what is needed at the bottom.</p>";
+  }
+
+  h += "<input class='who' id='ckwho' placeholder='Your name' value='" +
+       esc(su.by || saved) + "'>";
+
+  gs.forEach(g => {
+    h += "<div class='ckg'><h3>" + esc(g.title) +
+         (g.sub ? " <span>" + esc(g.sub) + "</span>" : "") + "</h3>";
+    if (g.note) h += "<div class='cknote'>" + esc(g.note) + "</div>";
+    g.lines.forEach(l => {
+      const st = su.state[l.key] || "";
+      const nt = su.notes[l.key] || "";
+      h += "<div class='ckrow " + st + (l.step ? " step" : "") +
+        "' data-k='" + esc(l.key) + "'>" +
+        "<span class='box'>" +
+        (st === "done" ? "✓" : st === "missing" ? "!" : "") + "</span>" +
+        "<span class='txt'>" + esc(l.text) +
+        (l.qty > 1 ? " <b>×" + l.qty + "</b>" : "") +
+        (l.hint ? "<small class='" + esc(l.level || "") + "'>" + esc(l.hint) +
+                  "</small>" : "") +
+        (nt ? "<small class='nt'>✎ " + esc(nt) + "</small>" : "") +
+        "</span>" +
+        "<button class='mini' data-act='miss' title='Missing or broken'>⚠</button>" +
+        "<button class='mini' data-act='note' title='Write a note'>✎</button>" +
+        (l.added ? "<button class='mini' data-act='del' title='Remove this line'>" +
+                   "×</button>" : "") +
+        "</div>";
+    });
+    h += "</div>";
+  });
+
+  h += "<div class='ckadd'><input id='ckfree' " +
+    "placeholder='Something else needed, missing or broken'>" +
+    "<button class='btn2 small' id='ckaddb'>Add</button></div>";
+  h += "<p>" + (sc.total && !sc.ready
+        ? "<button class='btn2 small ghost' id='ckall'>Tick everything</button>" : "") +
+    (sc.done || sc.missing
+        ? "<button class='btn2 small ghost' id='ckclr'>Start over</button>" : "") +
+    "</p>";
+
+  $("side").innerHTML = h;
+  $("bk").onclick = () => { ckOpen = null; side(); };
+
+  const who = $("ckwho");
+  who.onchange = () => {
+    const v = who.value.trim();
+    if (v) { try { localStorage.setItem(CK_WHO, v); } catch (e) {} }
+    ckSave(b, { by: v });
+  };
+
+  $("side").querySelectorAll(".ckrow").forEach(row => {
+    const k = row.dataset.k;
+    row.onclick = ev => {
+      if (ev.target.closest("button")) return;
+      const st = Object.assign({}, su.state);
+      st[k] = st[k] === "done" ? "" : "done";
+      ckSave(b, { state: st, by: whoNow() });
+    };
+    row.querySelectorAll("button").forEach(btn => btn.onclick = ev => {
+      ev.stopPropagation();
+      if (btn.dataset.act === "miss") {
+        const st = Object.assign({}, su.state);
+        st[k] = st[k] === "missing" ? "" : "missing";
+        ckSave(b, { state: st, by: whoNow() });
+      } else if (btn.dataset.act === "note") {
+        noteBox(row, k, b, su);
+      } else {
+        ckSave(b, { extra: (su.extra || []).filter(x => x.key !== k),
+                    by: whoNow() });
+      }
+    });
+  });
+
+  const addLine = () => {
+    const t = $("ckfree").value.trim();
+    if (!t) return;
+    const by = whoNow();
+    $("ckfree").value = "";
+    $("ckfree").blur();          // let the panel repaint with the new line on it
+    ckSave(b, { by, extra: (su.extra || []).concat(
+      [{ key: "x_" + Date.now().toString(36), text: t, by }]) });
+  };
+  $("ckaddb").onclick = addLine;
+  $("ckfree").onkeydown = e => { if (e.key === "Enter") addLine(); };
+
+  const all = $("ckall");
+  if (all) all.onclick = () => {
+    const st = Object.assign({}, su.state);
+    gs.forEach(g => g.lines.forEach(l => { if (st[l.key] !== "missing") st[l.key] = "done"; }));
+    ckSave(b, { state: st, by: whoNow() });
+  };
+  const clr = $("ckclr");
+  if (clr) clr.onclick = () => {
+    if (!confirm("Clear every tick and note on this list?")) return;
+    const st = {}, nt = {};
+    Object.keys(su.state || {}).forEach(x => st[x] = "");
+    Object.keys(su.notes || {}).forEach(x => nt[x] = "");
+    ckSave(b, { state: st, notes: nt, by: whoNow() });
+  };
+}
+
+// A note typed straight under the row, rather than a dialog box: the wall
+// tablet runs in kiosk mode and prompt() is not always allowed there.
+function noteBox(row, k, b, su) {
+  if (row.nextElementSibling && row.nextElementSibling.className === "cked") {
+    row.nextElementSibling.querySelector("input").focus();
+    return;
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "cked";
+  const inp = document.createElement("input");
+  inp.placeholder = "What is wrong with it?";
+  inp.value = (su.notes || {})[k] || "";
+  wrap.appendChild(inp);
+  row.after(wrap);
+  inp.focus();
+  let closed = false;
+  const finish = keep => {
+    if (closed) return;
+    closed = true;
+    const text = inp.value.trim();
+    inp.blur();                  // so the repaint below is allowed to happen
+    if (!keep) { wrap.remove(); return; }
+    const nt = Object.assign({}, su.notes);
+    nt[k] = text;
+    ckSave(b, { notes: nt, by: whoNow() });
+  };
+  inp.onkeydown = e => {
+    if (e.key === "Enter") finish(true);
+    if (e.key === "Escape") finish(false);
+  };
+  inp.onblur = () => finish(true);
+}
+
 /* ---------- day and block controls ---------- */
 function setDay(d) { day = d; picked = picked; watchDay(); draw(); }
 $("prev").onclick  = () => setDay(iso(addDays(new Date(day + "T00:00:00"), -1)));
@@ -1256,7 +1607,7 @@ setInterval(() => {
 $("clock").textContent =
   new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
 
-console.log("floor.html build 2026-11-17-3d");
+console.log("floor.html build 2026-11-18-checklist");
 watchDay();
 draw();
 </script>
