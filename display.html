@@ -222,15 +222,21 @@
   .f input::placeholder { color:#7a8794; }
   .f select { appearance:auto; }
   .f .two { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
-  #roomPick { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+  #roomPick, #dayPick { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+  #dayPick label { display:inline-flex; align-items:center; gap:5px; margin:0;
+                   border:1px solid var(--line); border-radius:6px;
+                   padding:7px 10px; font-size:14px; color:var(--fg);
+                   cursor:pointer; user-select:none; }
+  #dayPick label.on { background:#1f3864; border-color:#4f9ad6; }
+  #dayPick input { width:auto; }
   #roomPick label { display:inline-flex; align-items:center; gap:5px; margin:0;
                     border:1px solid var(--line); border-radius:6px;
                     padding:7px 10px; font-size:14px; color:var(--fg);
                     cursor:pointer; user-select:none; }
   #roomPick label.on { background:#1f3864; border-color:#4f9ad6; }
   #roomPick input { width:auto; }
-  #quickPick { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 0; }
-  #quickPick button { font-size:12px; padding:4px 9px; }
+  #quickPick, .quickpick { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 0; }
+  #quickPick button, .quickpick button { font-size:12px; padding:4px 9px; }
   #stationBlock { margin-top:12px; border-top:1px solid var(--line);
                   padding-top:10px; }
   .stn { border:1px solid #2c4257; background:#0f1f30; color:#eaf1f8;
@@ -431,11 +437,16 @@ function esc(s) {
 // booking chips, banner text and the Comments column, because every one of
 // those sits on a background the user can change.
 function contrastOn(hex) {
-  const h = String(hex||"").replace("#","");
+  const h = String(hex || "").replace("#", "");
   if (h.length !== 6) return "#ffffff";
-  const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16),
-        b = parseInt(h.slice(4,6),16);
-  return (0.299*r + 0.587*g + 0.114*b) / 255 > 0.62 ? "#13202c" : "#ffffff";
+  // WCAG relative luminance, then whichever of black or white actually
+  // contrasts better. A fixed cutoff leaves mid-tones like teal unreadable.
+  const lin = i => {
+    const v = parseInt(h.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const L = 0.2126 * lin(0) + 0.7152 * lin(2) + 0.0722 * lin(4);
+  return ((L + 0.05) / 0.05) >= (1.05 / (L + 0.05)) ? "#13202c" : "#ffffff";
 }
 const themeColor = k => (settings.theme && settings.theme[k]) ||
                         DEFAULT_SETTINGS.theme[k];
@@ -661,19 +672,60 @@ function renderMulti() {
     const ws  = addDays(base, off*7);
     const isNow = off === 0;
     html += "<section class='panel" + (isNow ? " now" : "") + "'>" +
-            "<h2>" + (isNow ? "THIS WEEK" : "WK " + weekNumber(ws)) +
+            "<h2>" + (isNow ? "THIS WEEK" : weekTag(ws)) +
             " <span>" + weekRangeText(ws) + "</span></h2>" +
             weekTableHTML(ws, {compact:true}) + "</section>";
   }
   host.innerHTML = html + "</div>";
 }
 
-// Academic week number, counting from the configured semester start.
+// Which semester a week belongs to, and its number within that semester.
+// Counting runs from whichever semester started most recently on or before
+// the week in question, so the numbering restarts at WK 1 each term instead
+// of running to WK 40 by summer.
+function semesterOf(d) {
+  const mon = mondayOf(d);
+  const base3 = [
+    ["Spring", settings.springStart],
+    ["Summer", settings.summerStart],
+    ["Fall",   settings.fallStart],
+    // the old single field still counts, so nothing breaks on upgrade
+    ["",       settings.semesterStart]
+  ].filter(t => t[1])
+   .map(t => ({ name: t[0], d: new Date(t[1] + "T00:00:00") }))
+   .filter(t => !isNaN(t.d));
+  if (!base3.length) return null;
+
+  // The three dates describe a year that repeats, so project each term into
+  // the neighbouring years too. Without this the count runs on for ever and
+  // next August reads "Summer WK 12" instead of "Fall WK 1".
+  const terms = [];
+  for (const t of base3)
+    for (const shift of [-1, 0, 1]) {
+      const d = new Date(t.d);
+      d.setFullYear(d.getFullYear() + shift);
+      terms.push({ name: t.name, start: mondayOf(d) });
+    }
+  terms.sort((a, b) => a.start - b.start);
+
+  // the latest term that has already begun
+  let pick = terms[0];
+  for (const t of terms) if (t.start <= mon) pick = t;
+  return { name: pick.name,
+           week: Math.round((mon - pick.start) / 604800000) + 1 };
+}
+
 function weekNumber(d) {
-  const s = settings.semesterStart ? new Date(settings.semesterStart + "T00:00:00")
-                                   : null;
-  if (!s) return Math.round((d - mondayOf(new Date()))/604800000);
-  return Math.round((mondayOf(d) - mondayOf(s)) / 604800000) + 1;
+  const t = semesterOf(d);
+  if (!t) return Math.round((d - mondayOf(new Date())) / 604800000);
+  return t.week;
+}
+
+// "WK 12" or "Fall WK 12" once the terms are named.
+function weekTag(d) {
+  const t = semesterOf(d);
+  if (!t) return "WK " + weekNumber(d);
+  return (t.name ? t.name + " " : "") + "WK " + t.week;
 }
 
 function weekHasBookings(off) {
@@ -808,12 +860,16 @@ let boardNotes = [], editingNote = null, noteColor = "yellow", noteHex = null;
 // Pick black or white text for a background, so a custom colour can never
 // produce an unreadable note.
 function readableOn(hex) {
-  const h = (hex||"").replace("#","");
+  const h = String(hex || "").replace("#", "");
   if (h.length !== 6) return "#ffffff";
-  const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16),
-        b = parseInt(h.slice(4,6),16);
-  const lum = (0.299*r + 0.587*g + 0.114*b) / 255;
-  return lum > 0.62 ? "#13202c" : "#ffffff";
+  // WCAG relative luminance, then whichever of black or white actually
+  // contrasts better. A fixed cutoff leaves mid-tones like teal unreadable.
+  const lin = i => {
+    const v = parseInt(h.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const L = 0.2126 * lin(0) + 0.7152 * lin(2) + 0.0722 * lin(4);
+  return ((L + 0.05) / 0.05) >= (1.05 / (L + 0.05)) ? "#13202c" : "#ffffff";
 }
 const noteHexOf = n => n.hex || colors[n.color] || colors.yellow || "#b08f00";
 
@@ -1109,7 +1165,6 @@ function entryHtml(b, showRoom) {
         "</span>";
     }).join("") + "</div>";
   }
-  const entryInk = contrastOn(colors[b.color] || colors.grey || "#7a8794");
   const editBtn = user
     ? "<button class='btn ghost small edit-one' data-id='" + b.id + "'>Edit</button>"
     : "";
@@ -1287,7 +1342,7 @@ function stationEditor(key, roomId) {
 
     document.getElementById("cardBody").innerHTML =
       "<div class='f'>" + list +
-      "<div id='quickPick' style='margin-top:10px'>" +
+      "<div class='quickpick' style='margin-top:10px'>" +
         "<button class='btn ghost small sx_add' data-t='bed'>+ Bed</button>" +
         "<button class='btn ghost small sx_add' data-t='table'>+ Table</button>" +
         "<button class='btn ghost small sx_add' data-t='chair'>+ Chair</button>" +
@@ -1426,6 +1481,7 @@ function openDay(key) {
 document.getElementById("board").addEventListener("click", ev => {
   const td = ev.target.closest("td.clickable");
   if (!td) return;
+  if (browseShift) browseAt = Date.now();   // keep the week they are looking at
   if (td.dataset.note) {
     // Straight into the comment for that day -- no detour through the day view.
     if (user) { openCell = { date: td.dataset.note, roomId: (rooms[0]||{}).id };
@@ -1498,6 +1554,18 @@ function editForm(b) {
     "<option value='" + n + "'" +
     (b && b.color === n ? " selected" : "") + ">" + n + "</option>").join("");
   const picked = b ? [b.roomId] : [openCell.roomId];
+
+  // The seven days of the week the clicked cell belongs to.
+  const weekMon = mondayOf(new Date(openCell.date + "T00:00:00"));
+  const weekDays = [0,1,2,3,4,5,6].map(i => {
+    const d = addDays(weekMon, i);
+    return { key: iso(d), lab: DAYS[i] + " " + (d.getMonth()+1) + "/" + d.getDate(),
+             weekday: i < 5 };
+  });
+  const dayBoxes = weekDays.map(d =>
+    "<label class='" + (d.key === openCell.date ? "on" : "") + "'>" +
+    "<input type='checkbox' class='dy' value='" + d.key + "'" +
+    (d.key === openCell.date ? " checked" : "") + ">" + d.lab + "</label>").join("");
   const roomBoxes = rooms.map(r =>
     "<label class='" + (picked.includes(r.id) ? "on" : "") + "'>" +
     "<input type='checkbox' class='rm' value='" + r.id + "'" +
@@ -1517,6 +1585,22 @@ function editForm(b) {
     (b && b.groupId
       ? "<label style='margin-top:10px'><input type='checkbox' id='e_all'> " +
         "Apply changes to every room in this event</label>" : "") +
+    // Days: only when creating. Moving an existing booking onto several days
+    // is ambiguous, so editing stays on the day it is already on.
+    (b ? "" :
+      "<label style='margin-top:10px'>Days</label>" +
+      "<div id='dayPick'>" + dayBoxes + "</div>" +
+      "<div class='quickpick'>" +
+        "<button class='btn ghost small dq' data-d='week'>Mon&ndash;Fri</button>" +
+        "<button class='btn ghost small dq' data-d='*'>Whole week</button>" +
+        "<button class='btn ghost small dq' data-d='one'>Just this day</button>" +
+      "</div>" +
+      "<div class='two' style='grid-template-columns:1fr 1fr;margin-top:8px'>" +
+        "<div><label>Repeat weekly for</label>" +
+        "<input id='e_weeks' type='number' min='1' max='20' value='1'></div>" +
+        "<div><label>&nbsp;</label><div id='e_count' class='empty' " +
+          "style='padding-top:9px'></div></div>" +
+      "</div>") +
     "<div class='two' style='grid-template-columns:86px 1fr'>" +
       "<div><label>Icon</label><input id='e_icon' maxlength='4' " +
         "placeholder='&#129658;' value='" + esc(b ? (b.icon||"") : "") + "'></div>" +
@@ -1583,7 +1667,7 @@ function editForm(b) {
     if (!chosen.includes(stnTab)) stnTab = chosen[0];
 
     const tabs = chosen.length > 1
-      ? "<div id='quickPick' style='margin-bottom:8px'>" +
+      ? "<div class='quickpick' style='margin-bottom:8px'>" +
         chosen.map(id => "<button class='btn " +
           (id === stnTab ? "" : "ghost") + " small stn_tab' data-id='" + id +
           "'>" + esc(roomLabel(id)) + "</button>").join("") +
@@ -1747,10 +1831,55 @@ function editForm(b) {
     if (nw) nw.onclick = () => quickAddItem(drawItems);
   }
 
+  // ---- days ----
+  const dayHost = document.getElementById("dayPick");
+  const chosenDays = () => dayHost
+    ? [...dayHost.querySelectorAll("input:checked")].map(i => i.value).sort()
+    : [openCell.date];
+  // Every date this will land on: the ticked days, repeated weekly.
+  function allDates() {
+    const weeks = Math.max(1, Math.min(20,
+      parseInt((document.getElementById("e_weeks")||{}).value, 10) || 1));
+    const out = [];
+    for (let w = 0; w < weeks; w++)
+      for (const d of chosenDays())
+        out.push(iso(addDays(new Date(d + "T00:00:00"), w * 7)));
+    return [...new Set(out)].sort();
+  }
+  function countNote() {
+    const el = document.getElementById("e_count");
+    if (!el) return;
+    const rooms_ = [...document.querySelectorAll("#roomPick input:checked")].length;
+    const n = allDates().length * Math.max(1, rooms_);
+    el.textContent = n === 1 ? "1 booking" : n + " bookings";
+    el.style.color = n > 40 ? "#ff9e9e" : "";
+  }
+  if (dayHost) {
+    const dsync = l => l.classList.toggle("on", l.querySelector("input").checked);
+    dayHost.querySelectorAll("label").forEach(l =>
+      l.querySelector("input").onchange = () => { dsync(l); countNote(); });
+    document.querySelectorAll(".dq").forEach(btn => btn.onclick = () => {
+      const mode = btn.dataset.d;
+      dayHost.querySelectorAll("label").forEach((l, i) => {
+        const inp = l.querySelector("input");
+        inp.checked = mode === "*" ? true
+                    : mode === "week" ? i < 5
+                    : inp.value === openCell.date;
+        dsync(l);
+      });
+      countNote();
+    });
+    const wk = document.getElementById("e_weeks");
+    if (wk) wk.oninput = countNote;
+    countNote();                       // show the tally straight away
+  }
+
   const pick = document.getElementById("roomPick");
   const sync = el => el.classList.toggle("on", el.querySelector("input").checked);
   pick.querySelectorAll("label").forEach(l => {
-    l.querySelector("input").onchange = () => { sync(l); drawStations(); drawItems(); };
+    l.querySelector("input").onchange = () => {
+      sync(l); drawStations(); drawItems(); countNote();
+    };
   });
   drawStations();
   drawItems();
@@ -1764,7 +1893,7 @@ function editForm(b) {
       else if (want) l.querySelector("input").checked = true;
       sync(l);
     });
-    drawStations();
+    drawStations(); countNote();
   });
 
   document.getElementById("e_cancel").onclick =
@@ -1802,31 +1931,63 @@ function editForm(b) {
                   ? "g" + Date.now().toString(36) : null);
 
     const applyAll = document.getElementById("e_all");
-    if (b && applyAll && applyAll.checked && b.groupId) {
-      const sibs = bookings.filter(x => x.groupId === b.groupId);
-      for (const sib of sibs)
-        await updateDoc(doc(db,"bookings",sib.id),
-          Object.assign({}, data, {roomId: sib.roomId, groupId: gid,
-                                   stations: stationsFor(sib.roomId)}));
-    } else if (b) {
-      await updateDoc(doc(db,"bookings",b.id),
-        Object.assign({}, data, {roomId: chosen[0], groupId: gid,
-                                 stations: stationsFor(chosen[0])}));
+    const spread = applyAll && applyAll.checked;
+
+    if (b) {
+      // Every room this event already covers. The booking being edited keeps
+      // its OWN room -- it must never be moved to whichever room happens to
+      // sit first in the list.
+      const sibs = b.groupId
+        ? bookings.filter(x => x.groupId === b.groupId)
+        : [b];
+      const covered = sibs.map(x => x.roomId);
+      const dropped = sibs.filter(x => !chosen.includes(x.roomId));
+
+      if (dropped.length && !confirm(
+            "Remove this from " + dropped.map(x => roomLabel(x.roomId)).join(", ") +
+            "? Those rooms were unticked.")) return;
+
+      for (const sib of dropped) await deleteDoc(doc(db,"bookings",sib.id));
+
+      for (const sib of sibs) {
+        if (!chosen.includes(sib.roomId)) continue;
+        const self = sib.id === b.id;
+        await updateDoc(doc(db,"bookings",sib.id), (self || spread)
+          ? Object.assign({}, data, {roomId: sib.roomId, groupId: gid,
+                                     stations: stationsFor(sib.roomId)})
+          : { groupId: gid });
+      }
+
+      // Rooms ticked just now that the event did not cover before.
+      for (const rid of chosen) {
+        if (covered.includes(rid)) continue;
+        await addDoc(collection(db,"bookings"),
+          Object.assign({}, data, {roomId: rid, groupId: gid,
+                                   stations: stationsFor(rid)}));
+      }
+    } else {
+      // Every ticked day, repeated weekly, across every ticked room. Each day
+      // gets its own group id: Tuesday and Thursday are two events, not one,
+      // so editing one must not drag the other along.
+      const dates = allDates();
+      const total = dates.length * chosen.length;
+      if (total > 8 && !confirm(
+            "This creates " + total + " bookings \u2014 " + dates.length +
+            " day(s) \u00d7 " + chosen.length + " room(s). Go ahead?")) return;
+      let seq = 0;
+      for (const dt of dates) {
+        const dayGid = chosen.length > 1
+          ? "g" + Date.now().toString(36) + (seq++).toString(36) : null;
+        for (const rid of chosen)
+          await addDoc(collection(db,"bookings"),
+            Object.assign({}, data, {date: dt, roomId: rid, groupId: dayGid,
+                                     stations: stationsFor(rid)}));
+      }
     }
 
-    // Any newly ticked room that has no booking in this event yet.
-    const already = b
-      ? bookings.filter(x => x.groupId && x.groupId === b.groupId)
-                .map(x => x.roomId).concat([b.roomId])
-      : [];
-    for (const rid of chosen) {
-      if (b && (already.includes(rid) || rid === chosen[0])) continue;
-      await addDoc(collection(db,"bookings"),
-        Object.assign({}, data, {roomId: rid, groupId: gid,
-                                 stations: stationsFor(rid)}));
-    }
-    openRoom(openCell.date, chosen.includes(openCell.roomId)
-             ? openCell.roomId : chosen[0]);
+    const land = b && chosen.includes(b.roomId) ? b.roomId
+               : chosen.includes(openCell.roomId) ? openCell.roomId : chosen[0];
+    openRoom(openCell.date, land);
   };
 
   const del = document.getElementById("e_del");
@@ -1864,6 +2025,10 @@ document.getElementById("who").onclick = () => {
 setInterval(() => {
   // Hand control back after a couple of minutes so the wall always
   // ends up showing the current week again.
+  // Nothing moves the board while a popup is open: someone is reading it, or
+  // worse, typing into it. The countdown restarts when they close it.
+  const busy = overlay.classList.contains("on");
+  if (busy) { browseAt = Date.now(); lastFlip = Date.now(); return; }
   if (browseShift && Date.now() - browseAt > (settings.browseResetSec || 120) * 1000)
     browse(0);
   if (!rotating || browseShift) return;

@@ -60,19 +60,45 @@
                 border-radius:7px; padding:5px 11px; font-size:13px;
                 font-weight:600; cursor:pointer; font-family:inherit; }
   .seg button.on { background:#1f4e79; color:#fff; }
-  #hint3d { position:absolute; left:10px; top:10px; background:rgba(5,12,20,.72);
-            color:#cfe0ee; padding:6px 11px; border-radius:9px; font-size:12.5px;
-            pointer-events:none; max-width:70%; }
-  #youAre { position:absolute; right:12px; top:10px; background:rgba(5,12,20,.78);
-            color:#fff; padding:7px 13px; border-radius:9px; font-size:15px;
-            font-weight:700; pointer-events:none; }
-  #youAre small { display:block; font-weight:400; font-size:12px; color:#8fb3cc; }
-  #pad { position:absolute; left:10px; bottom:10px; display:none;
-         grid-template-columns:repeat(3,52px); gap:5px; }
-  #pad button { height:52px; padding:0; font-size:19px; border-radius:9px;
-                border:1px solid var(--line); background:rgba(21,44,66,.92);
-                color:var(--fg); cursor:pointer; }
+  #tintBox { display:flex; align-items:center; gap:6px; font-size:13px;
+             color:var(--muted); cursor:pointer; white-space:nowrap; }
+  #tintBox input { width:auto; cursor:pointer; }
+  #hint3d { position:absolute; left:10px; top:10px; background:rgba(255,255,255,.9);
+            color:#2b3744; padding:6px 11px; border-radius:9px; font-size:12.5px;
+            pointer-events:none; max-width:70%;
+            box-shadow:0 2px 8px rgba(20,32,44,.18); }
+  #youAre { position:absolute; right:12px; top:10px; background:rgba(255,255,255,.92);
+            color:#14202c; padding:7px 13px; border-radius:9px; font-size:15px;
+            font-weight:700; pointer-events:none;
+            box-shadow:0 2px 10px rgba(20,32,44,.2); }
+  #youAre small { display:block; font-weight:400; font-size:12px; color:#5a6775; }
+  #stale { position:absolute; left:50%; top:54px; transform:translateX(-50%);
+           background:#fff4e5; border:1px solid #d98324; color:#5a3b10;
+           padding:11px 15px; border-radius:10px; font-size:13.5px;
+           line-height:1.5; max-width:520px; box-shadow:0 4px 16px rgba(20,32,44,.2); }
+  #stale .hd { display:block; font-weight:700; margin-bottom:3px; }
+  #pad { position:absolute; left:10px; bottom:46px; display:none;
+         grid-template-columns:repeat(3,58px); gap:6px; }
+  #pad button { height:58px; padding:0; font-size:21px; border-radius:10px;
+                border:1px solid #b6bec8; background:rgba(255,255,255,.93);
+                color:#2b3744; cursor:pointer;
+                box-shadow:0 2px 8px rgba(20,32,44,.18); }
   body.walking #pad { display:grid; }
+  #pad button:active { background:#1f4e79; color:#fff; }
+  #keys { position:absolute; left:10px; bottom:10px; display:none;
+          background:rgba(255,255,255,.92); color:#3a4753; padding:6px 12px;
+          border-radius:9px; font-size:12.5px; pointer-events:none;
+          box-shadow:0 2px 8px rgba(20,32,44,.16); }
+  #keys b { color:#14202c; }
+  body.walking #keys { display:block; }
+  #gl.locked { cursor:none; }
+  #cross { position:absolute; left:50%; top:50%; width:14px; height:14px;
+           margin:-7px 0 0 -7px; display:none; pointer-events:none; }
+  #cross::before, #cross::after { content:""; position:absolute;
+           background:rgba(20,32,44,.6); }
+  #cross::before { left:6px; top:0; width:2px; height:14px; }
+  #cross::after  { top:6px; left:0; height:2px; width:14px; }
+  body.walking #gl.locked ~ #cross { display:block; }
 
   .rm { fill:#13243a; stroke:#2c4257; stroke-width:3; }
   .rm.book { cursor:pointer; }
@@ -133,6 +159,9 @@
     <button data-m="3d">3D View</button>
     <button data-m="walk">Walk</button>
   </div>
+  <label id="tintBox" style="display:none">
+    <input type="checkbox" id="showBook" checked> Shade booked rooms
+  </label>
   <div id="when">
     <button id="prev" title="Previous day">&#8249;</button>
     <input type="date" id="date">
@@ -150,10 +179,25 @@
     <div id="gl" class="off"></div>
     <div id="hint3d" style="display:none"></div>
     <div id="youAre" style="display:none"></div>
+    <div id="stale" style="display:none">
+      <span class="hd">No furniture in this floor plan.</span>
+      The plan stored in the database was saved before the beds, tables and
+      equipment were exported. Upload the new <b>lab-layout.json</b> and run
+      <b>import-layout.html</b> again — the rooms will fill in.
+    </div>
     <div id="pad">
-      <span></span><button data-k="f">&#9650;</button><span></span>
-      <button data-k="l">&#9664;</button><button data-k="b">&#9660;</button>
-      <button data-k="r">&#9654;</button>
+      <button data-k="tl" title="Turn left (Q)">&#8634;</button>
+      <button data-k="f"  title="Forward (W)">&#9650;</button>
+      <button data-k="tr" title="Turn right (E)">&#8635;</button>
+      <button data-k="l"  title="Step left (A)">&#9664;</button>
+      <button data-k="b"  title="Back (S)">&#9660;</button>
+      <button data-k="r"  title="Step right (D)">&#9654;</button>
+    </div>
+    <div id="cross"></div>
+    <div id="keys">
+      <b>W</b> forward &middot; <b>S</b> back &middot; <b>A</b>&thinsp;/&thinsp;<b>D</b> step sideways
+      &middot; <b>Q</b>&thinsp;/&thinsp;<b>E</b> turn &middot; <b>Shift</b> faster
+      &middot; <b>R</b> restart &middot; click to look with the mouse
     </div>
   </div>
   <aside id="side"><p class="empty">Tap a room to see what is set up in it.</p></aside>
@@ -301,6 +345,9 @@ function draw() {
     .toLocaleDateString(undefined,{weekday:"long", month:"long", day:"numeric"});
   $("date").value = day;
 
+  const warn = document.getElementById("stale");
+  if (warn && mode === "map") warn.style.display = (plan && !planHasProps())
+    ? "block" : "none";
   if (!plan) {
     svg.innerHTML = "<text x='40' y='60' fill='#8fb3cc' font-size='26'>" +
       "The floor plan has not been imported yet - run import-layout.html.</text>";
@@ -500,7 +547,7 @@ function side() {
 // Rooms, walls and furniture built from the same floorplan the 2D map uses,
 // coloured live by the day's bookings. Map stays SVG because it prints.
 const S3 = 1/32, WALL_H = 2.7, WALL_T = 0.11;
-let mode = "map";
+let mode = "map", showBookings = true;
 let scene, cam3, camW, renderer, raf = null, world3 = null, picks = [], labels3 = [];
 let ceilings = [];
 let orbit = { yaw: -0.9, pitch: 0.62, dist: 60, cx: 0, cz: 0, framed: false };
@@ -516,12 +563,17 @@ function initGL() {
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   host.appendChild(renderer.domElement);
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0d1b2a);
-  scene.fog = new THREE.Fog(0x0d1b2a, 40, 150);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.05));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.5);
+  // Same light, architectural look as the lab model: a pale room you can read,
+  // not a dark board. Booking status is a tint on the floor, not a flood fill.
+  scene.background = new THREE.Color(0xe9eef4);
+  scene.fog = new THREE.Fog(0xe9eef4, 55, 190);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xb9c2cf, 0.95));
+  const sun = new THREE.DirectionalLight(0xfff7ee, 0.62);
   sun.position.set(18, 34, 12);
   scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xdbe8ff, 0.24);
+  fill.position.set(-16, 22, -14);
+  scene.add(fill);
   cam3 = new THREE.PerspectiveCamera(52, 1, 0.1, 400);
   camW = new THREE.PerspectiveCamera(72, 1, 0.05, 300);
   bindGL(host);
@@ -538,6 +590,16 @@ function sizeGL() {
   camW.aspect = w / h; camW.updateProjectionMatrix();
 }
 
+const FLOOR_C = 0xeceee9, WALL_C = 0xb9c0c8, CEIL_C = 0xdfe4ea;
+
+// Blend a status colour into the pale floor so a booked room reads as booked
+// without turning the building into a heat map.
+function tintFloor(hex, amount) {
+  if (!hex || !showBookings) return FLOOR_C;
+  const a = new THREE.Color(FLOOR_C), b = new THREE.Color(hex);
+  return a.lerp(b, amount == null ? 0.46 : amount).getHex();
+}
+
 const box = (w, h, d, col) =>
   new THREE.Mesh(new THREE.BoxGeometry(w, h, d),
                  new THREE.MeshLambertMaterial({ color: col }));
@@ -551,9 +613,12 @@ function tag(text, col) {
   c.height = 72;
   const g2 = c.getContext("2d");
   g2.font = "bold 46px Segoe UI, system-ui, sans-serif";
-  g2.fillStyle = "rgba(10,20,32,.72)";
+  g2.fillStyle = "rgba(255,255,255,.86)";
   g2.fillRect(0, 0, c.width, c.height);
-  g2.fillStyle = col || "#dce8f3";
+  g2.strokeStyle = "rgba(90,105,125,.45)";
+  g2.lineWidth = 3;
+  g2.strokeRect(1.5, 1.5, c.width - 3, c.height - 3);
+  g2.fillStyle = col || "#44525f";
   g2.textBaseline = "middle";
   g2.fillText(text, 18, 38);
   const t = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -565,7 +630,7 @@ function tag(text, col) {
 function wallSeg(x1, z1, x2, z2, col) {
   const dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz);
   if (len < 0.02) return null;
-  const m = box(len, WALL_H, WALL_T, col == null ? 0x35506b : col);
+  const m = box(len, WALL_H, WALL_T, col == null ? WALL_C : col);
   m.position.set((x1 + x2) / 2, WALL_H / 2, (z1 + z2) / 2);
   m.rotation.y = -Math.atan2(dz, dx);
   return m;
@@ -595,8 +660,13 @@ function cutCovers(cuts, ax, fix, a, b) {
     a >= c.a - 0.35 && b <= c.b + 0.35);
 }
 
+const planHasProps = () => !!(plan && (plan.rooms||[]).some(r => (r.props||[]).length));
+
 function buildWorld() {
   if (!scene || !plan) return;
+  const stale = !planHasProps();
+  const warn = document.getElementById("stale");
+  if (warn) warn.style.display = stale ? "block" : "none";
   if (world3) { scene.remove(world3); }
   world3 = new THREE.Group();
   picks = []; labels3 = []; ceilings = [];
@@ -613,7 +683,7 @@ function buildWorld() {
 
   // one floor slab for the whole building
   const fw = (B.x2 - B.x1) * S3 + 6, fd = (B.y2 - B.y1) * S3 + 6;
-  const slab = box(fw, 0.12, fd, 0x16263a);
+  const slab = box(fw, 0.12, fd, 0xdde2e8);
   slab.position.set(orbit.cx, -0.06, orbit.cz);
   world3.add(slab);
 
@@ -631,13 +701,15 @@ function buildWorld() {
     for (let i = 0; i < n; i++) {
       const r = mine[i] || null;
       const st = r ? roomState(r) : { fill: "#13243a" };
-      const f = box(cw - 0.06, 0.08, d - 0.06, new THREE.Color(st.fill).getHex());
+      const plain = !showBookings || !st.fill || st.fill === "#13243a";
+      const f = box(cw - 0.06, 0.08, d - 0.06,
+                    plain ? (r ? FLOOR_C : 0xe4e7ec) : tintFloor(st.fill));
       f.position.set(x0 + cw * i + cw / 2, 0.04, z0 + d / 2);
       f.userData = { roomId: r ? r.id : null };
       world3.add(f);
       if (r) picks.push(f);
       const label = tag(r ? (r.label || pr.id) : pr.id,
-                        r ? "#ffffff" : "#8fb3cc");
+                        r ? "#14202c" : "#6b7686");
       label.position.set(x0 + cw * i + cw / 2, 2.35, z0 + d / 2);
       label.userData = { roomId: r ? r.id : null };
       label.visible = mode !== "walk";      // they hang through walls otherwise
@@ -648,7 +720,7 @@ function buildWorld() {
 
     // A ceiling, so walking reads as being inside a room rather than in a
     // roofless box. Hidden in the other modes, which need to see in.
-    const cap3 = box(w - 0.06, 0.1, d - 0.06, 0x1a2c42);
+    const cap3 = box(w - 0.06, 0.1, d - 0.06, CEIL_C);
     cap3.position.set(x0 + w / 2, WALL_H + 0.05, z0 + d / 2);
     cap3.visible = false;
     ceilings.push(cap3);
@@ -676,7 +748,8 @@ function buildWorld() {
       const bw = (p.mw || spec.w) * sc, bh = (p.mh || spec.h) * sc,
             bl = (p.ml || spec.l) * sc;
       const a = assigned[p.id];
-      const col = a ? new THREE.Color(colors[a.color] || "#4a8f4e").getHex() : spec.c;
+      const col = (a && showBookings)
+        ? new THREE.Color(colors[a.color] || "#4a8f4e").getHex() : spec.c;
       const m = box(bw, bh, bl, col);
       const lift = (p.elev != null ? p.elev : (OFF[p.t] || 0));
       m.position.set(x0 + p.x, lift + bh / 2 + 0.08, z0 + p.z);
@@ -690,14 +763,14 @@ function buildWorld() {
   // walls the model added by hand
   (plan.walls || []).forEach(w => {
     const ws = [];
-    wallWithDoors(w.x1, w.z1, w.x2, w.z2, w.doors, 0x31485f, ws);
+    wallWithDoors(w.x1, w.z1, w.x2, w.z2, w.doors, 0xaeb6bf, ws);
     ws.forEach(m => world3.add(m));
   });
 
   // a grid on the floor so walking reads as movement
   if (!world3.getObjectByName("grid")) {
     const grid = new THREE.GridHelper(Math.max(fw, fd), Math.round(Math.max(fw, fd)),
-                                      0x2a3f55, 0x1d2d42);
+                                      0xc8ced6, 0xd8dde3);
     grid.name = "grid";
     grid.position.set(orbit.cx, 0.02, orbit.cz);
     world3.add(grid);
@@ -762,9 +835,13 @@ function whereAmI() {
                           : (r.roomName || "") };
 }
 
-let whereTick = 0;
-function loop() {
+let whereTick = 0, lastT = 0;
+function loop(t) {
   raf = requestAnimationFrame(loop);
+  // Seconds since the last frame, so a 120Hz screen does not walk twice as
+  // fast as a 60Hz one. Capped so a background tab does not teleport you.
+  const dt = Math.min(0.1, lastT ? (t - lastT) / 1000 : 0.016);
+  lastT = t;
   if (mode === "walk") {
     if (++whereTick % 12 === 0) {
       const w = whereAmI();
@@ -772,7 +849,14 @@ function loop() {
       if (w && el) el.innerHTML = esc(w.name) +
         (w.sub ? "<small>" + esc(w.sub) + "</small>" : "");
     }
-    const sp = 0.085;
+    // 1.5 m/s is an unhurried walk; Shift roughly doubles it. Everything is
+    // per second, not per frame, so a fast screen does not walk faster.
+    const sp = (held.fast ? 3.4 : 1.5) * dt;
+    const turn = 1.9 * dt;
+    if (held.tl) walk.yaw += turn;
+    if (held.tr) walk.yaw -= turn;
+    if (held.up)   walk.pitch = Math.min(1.1, walk.pitch + turn * 0.6);
+    if (held.down) walk.pitch = Math.max(-1.1, walk.pitch - turn * 0.6);
     const fx = Math.sin(walk.yaw), fz = Math.cos(walk.yaw);
     if (held.f) { walk.x -= fx * sp; walk.z -= fz * sp; }
     if (held.b) { walk.x += fx * sp; walk.z += fz * sp; }
@@ -795,6 +879,7 @@ function bindGL(host) {
     drag.moved += Math.abs(dx) + Math.abs(dy);
     drag.x = e.clientX; drag.y = e.clientY;
     if (mode === "walk") {
+      if (document.pointerLockElement) return;   // mousemove handles it
       walk.yaw -= dx * 0.005;
       walk.pitch = Math.max(-1.2, Math.min(1.2, walk.pitch - dy * 0.005));
     } else {
@@ -804,7 +889,30 @@ function bindGL(host) {
   });
   host.addEventListener("pointerup", e => {
     const was = drag; drag = null;
-    if (was && was.moved < 6) pickAt(e);
+    if (!was || was.moved >= 6) return;
+    // A tap in walk mode either grabs the mouse for looking, or picks a bed
+    // once the mouse is already grabbed.
+    if (mode === "walk" && !document.pointerLockElement) {
+      if (host.requestPointerLock) host.requestPointerLock();
+      return;
+    }
+    pickAt(e);
+  });
+
+  // While the mouse is grabbed, moving it looks around — no dragging.
+  document.addEventListener("pointerlockchange", () => {
+    const on = document.pointerLockElement === host;
+    host.classList.toggle("locked", on);
+    const hint = document.getElementById("hint3d");
+    if (mode === "walk" && hint)
+      hint.textContent = on
+        ? "Move the mouse to look · W A S D or arrows to move · Esc to release the mouse"
+        : "Click to look around · W A S D or arrows to move · R to go back to the start";
+  });
+  document.addEventListener("mousemove", e => {
+    if (document.pointerLockElement !== host) return;
+    walk.yaw -= e.movementX * 0.0022;
+    walk.pitch = Math.max(-1.2, Math.min(1.2, walk.pitch - e.movementY * 0.0022));
   });
   host.addEventListener("wheel", e => {
     e.preventDefault();
@@ -813,33 +921,54 @@ function bindGL(host) {
 
   document.querySelectorAll("#pad button").forEach(b => {
     const k = b.dataset.k;
-    const on = e => { e.preventDefault(); held[k] = true; };
+    const on  = e => { e.preventDefault(); held[k] = true; };
     const off = e => { e.preventDefault(); held[k] = false; };
     b.addEventListener("pointerdown", on);
     b.addEventListener("pointerup", off);
+    b.addEventListener("pointercancel", off);
     b.addEventListener("pointerleave", off);
   });
+
+  // W A S D for anyone used to it, arrows for everyone else: Up/Down walk,
+  // Left/Right turn, which is what people reach for who have never played a game.
+  const KEYMAP = {
+    w:"f", W:"f", s:"b", S:"b", a:"l", A:"l", d:"r", D:"r",
+    q:"tl", Q:"tl", e:"tr", E:"tr",
+    ArrowUp:"f", ArrowDown:"b", ArrowLeft:"tl", ArrowRight:"tr",
+    PageUp:"up", PageDown:"down"
+  };
+  // Never steal a keystroke from a field someone is typing in.
+  const typing = el => !!el && (el.tagName === "INPUT" || el.tagName === "SELECT" ||
+                                el.tagName === "TEXTAREA" || el.isContentEditable);
+
   addEventListener("keydown", e => {
-    if (mode === "walk" && (e.key === "r" || e.key === "R")) {
-      walk.placed = false; homeWalk(); return;
+    if (mode !== "walk" || typing(e.target)) return;
+    if (e.key === "Shift") { held.fast = true; return; }
+    if (e.key === "r" || e.key === "R") { walk.placed = false; homeWalk(); return; }
+    if (e.key === "Escape" && document.pointerLockElement) {
+      document.exitPointerLock(); return;
     }
-    const m = { w:"f", s:"b", a:"l", d:"r", ArrowUp:"f", ArrowDown:"b",
-                ArrowLeft:"l", ArrowRight:"r" }[e.key];
-    if (m) { held[m] = true; if (mode === "walk") e.preventDefault(); }
+    const m = KEYMAP[e.key];
+    if (m) { held[m] = true; e.preventDefault(); }
   });
   addEventListener("keyup", e => {
-    const m = { w:"f", s:"b", a:"l", d:"r", ArrowUp:"f", ArrowDown:"b",
-                ArrowLeft:"l", ArrowRight:"r" }[e.key];
+    if (e.key === "Shift") { held.fast = false; return; }
+    const m = KEYMAP[e.key];
     if (m) held[m] = false;
   });
+  // Moving away from the page must not leave a key stuck down.
+  addEventListener("blur", () => Object.keys(held).forEach(k => held[k] = false));
 }
 
 function pickAt(e) {
   const host = document.getElementById("gl");
   const rect = host.getBoundingClientRect();
-  const m = new THREE.Vector2(
-    ((e.clientX - rect.left) / rect.width) * 2 - 1,
-    -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  const locked = document.pointerLockElement === host;
+  const m = locked
+    ? new THREE.Vector2(0, 0)          // aim at the middle of the view
+    : new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1);
   const ray = new THREE.Raycaster();
   ray.setFromCamera(m, placeCam());
   const hit = ray.intersectObjects(picks, false)[0];
@@ -860,6 +989,7 @@ function setMode(m) {
   const svg = document.getElementById("svg"), gl = document.getElementById("gl");
   const hint = document.getElementById("hint3d");
   document.getElementById("youAre").style.display = m === "walk" ? "block" : "none";
+  document.getElementById("tintBox").style.display = m === "map" ? "none" : "flex";
   if (m === "map") {
     svg.classList.remove("off"); gl.classList.add("off");
     hint.style.display = "none";
@@ -880,14 +1010,21 @@ function setMode(m) {
   hint.style.display = "block";
   labels3.forEach(l => l.visible = m !== "walk");
   ceilings.forEach(c => c.visible = m === "walk");
+  if (m !== "walk" && document.pointerLockElement) document.exitPointerLock();
   hint.textContent = m === "walk"
-    ? "Drag to look · arrows or W A S D to move · tap a bed for its setup · R to go back to the start"
+    ? "Click to look around · W A S D or arrows to move · R to go back to the start"
     : "Drag to turn · scroll to zoom · tap a room or a bed";
   if (!raf) loop();
 }
 
 document.querySelectorAll("#modes button").forEach(b =>
   b.onclick = () => setMode(b.dataset.m));
+
+// Off gives the plain architectural view, the way the lab model shows it.
+document.getElementById("showBook").onchange = e => {
+  showBookings = e.target.checked;
+  if (mode !== "map") { buildWorld(); }
+};
 
 
 /* ============ editing a bed or table, from the floor ============ */

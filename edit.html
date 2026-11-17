@@ -23,7 +23,7 @@
   th { background:#1f3864; color:#fff; cursor:default; }
   td.day { background:#eaf1f8; font-weight:700; cursor:default; }
   .chip { display:block; border-radius:3px; padding:2px; margin:1px 0;
-          color:#fff; font-weight:600; }
+          font-weight:600; }
   #bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   dialog { border:0; border-radius:8px; padding:18px; min-width:300px; }
   dialog label { display:block; margin:8px 0 2px; font-size:12px; font-weight:600; }
@@ -107,6 +107,23 @@ import { firebaseConfig, COLORS, DEFAULT_SETTINGS } from "./firebase-config.js";
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app), auth = getAuth(app);
 const DAYS = ["Mon","Tues","Wed","Thurs","Fri","Sat","Sun"];
+
+// Black or white, whichever actually reads on the colour behind it. Any
+// background a person can choose needs this; a fixed text colour will always
+// disappear on some of them.
+function inkOn(hex) {
+  const h = String(hex || "").replace("#", "");
+  if (h.length !== 6) return "#ffffff";
+  // WCAG relative luminance, then whichever of black or white actually
+  // contrasts better. A fixed cutoff leaves mid-tones like teal unreadable.
+  const lin = i => {
+    const v = parseInt(h.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const L = 0.2126 * lin(0) + 0.7152 * lin(2) + 0.0722 * lin(4);
+  return ((L + 0.05) / 0.05) >= (1.05 / (L + 0.05)) ? "#13202c" : "#ffffff";
+}
+
 let rooms = [], bookings = [], notes = {}, weekStart, editing = null;
 let COLORS_LIVE = COLORS;   // replaced by settings/display on load
 
@@ -167,8 +184,9 @@ function draw() {
     rooms.forEach(r => {
       const cells = bookings.filter(b => b.date===key && b.roomId===r.id);
       h += "<td data-date='"+key+"' data-room='"+r.id+"'>" +
-        cells.map(b => "<span class='chip' data-id='"+b.id+"' style='background:"+
-          (COLORS_LIVE[b.color]||COLORS_LIVE.grey||"#7a8794")+"'>"+(b.course||"")+"</span>").join("") +
+        cells.map(b => { const bg = COLORS_LIVE[b.color]||COLORS_LIVE.grey||"#7a8794";
+          return "<span class='chip' data-id='"+b.id+"' style='background:"+bg+
+            ";color:"+inkOn(bg)+"'>"+(b.course||"")+"</span>"; }).join("") +
         "</td>";
     });
     h += "<td style='text-align:left'>"+((notes[key]||{}).text||"")+"</td></tr>";

@@ -27,7 +27,7 @@
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
   .row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
   .row input[type=text] { flex:1; }
-  .swatch { border-radius:4px; padding:4px 10px; color:#fff; font-weight:600;
+  .swatch { border-radius:4px; padding:4px 10px; font-weight:600;
             font-size:13px; min-width:92px; text-align:center; }
   button { padding:9px 15px; border:0; border-radius:5px; background:#1f3864;
            color:#fff; font-weight:600; cursor:pointer; }
@@ -46,7 +46,7 @@
            border-radius:8px; }
   #preview { border-radius:8px; padding:14px; margin-top:10px; }
   #preview .pchip { display:inline-block; border-radius:3px; padding:4px 8px;
-                    margin:3px; font-size:12px; font-weight:600; color:#fff; }
+                    margin:3px; font-size:12px; font-weight:600; }
   dialog { border:0; border-radius:10px; padding:20px; width:min(560px,94vw); }
   dialog h3 { margin:0 0 4px; }
   .st-row { display:flex; gap:8px; align-items:center; margin-bottom:7px; }
@@ -129,8 +129,20 @@
         </select>
         <label>How many weeks to show</label>
         <input id="s_mweeks" type="number" min="1" max="26">
-        <label>Semester start Monday (for week numbering)</label>
-        <input id="s_semstart" type="text" placeholder="2026-08-24">
+        <label>Semester start Mondays &mdash; for week numbering</label>
+        <div class="grid2" style="gap:0 8px">
+          <div><label style="margin-top:4px">Spring</label>
+            <input id="s_spring" type="date"></div>
+          <div><label style="margin-top:4px">Summer</label>
+            <input id="s_summer" type="date"></div>
+        </div>
+        <label style="margin-top:4px">Fall</label>
+        <input id="s_fall" type="date">
+        <p class="hint" style="margin-top:6px">
+          Week numbers restart at WK&nbsp;1 for whichever term has most recently
+          begun, so the wall view reads &ldquo;Fall WK 12&rdquo; rather than
+          counting on from last year. Use the Monday each term starts.
+        </p>
       </div>
       <div>
         <label>Panels across</label>
@@ -328,6 +340,23 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app), auth = getAuth(app);
 const $ = id => document.getElementById(id);
 
+
+// Black or white, whichever actually reads on the colour behind it. Any
+// background a person can choose needs this; a fixed text colour will always
+// disappear on some of them.
+function inkOn(hex) {
+  const h = String(hex || "").replace("#", "");
+  if (h.length !== 6) return "#ffffff";
+  // WCAG relative luminance, then whichever of black or white actually
+  // contrasts better. A fixed cutoff leaves mid-tones like teal unreadable.
+  const lin = i => {
+    const v = parseInt(h.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const L = 0.2126 * lin(0) + 0.7152 * lin(2) + 0.0722 * lin(4);
+  return ((L + 0.05) / 0.05) >= (1.05 / (L + 0.05)) ? "#13202c" : "#ffffff";
+}
+
 const THEME_FIELDS = [
   ["bg","Page background"], ["panel","Header and popup"], ["line","Grid lines"],
   ["fg","Text"], ["muted","Dim text"], ["today","Today's row"],
@@ -391,7 +420,9 @@ function draw() {
   $("s_mweeks").value     = settings.multiWeeks || 8;
   $("s_mcols").value      = settings.multiCols || 3;
   $("s_start").value      = settings.startOffset || 0;
-  $("s_semstart").value   = settings.semesterStart || "";
+  $("s_spring").value     = settings.springStart || "";
+  $("s_summer").value     = settings.summerStart || "";
+  $("s_fall").value       = settings.fallStart   || settings.semesterStart || "";
   $("s_notes").checked    = settings.showNotes !== false;
   $("s_notesTitle").value = settings.notesTitle || "Notes & Ideas";
   $("s_notesH").value     = settings.notesHeightVh || 24;
@@ -645,7 +676,8 @@ function addColorRow(name, hex) {
   row.innerHTML =
     "<input type='color' class='c_hex' value='" + hex + "'>" +
     "<input type='text' class='c_name' value='" + name + "' placeholder='name'>" +
-    "<span class='swatch' style='background:" + hex + "'>" + name + "</span>" +
+    "<span class='swatch' style='background:" + hex + ";color:" + inkOn(hex) +
+      "'>" + name + "</span>" +
     "<button class='danger tiny c_del'>Remove</button>";
   row.querySelector(".c_del").onclick = () => { row.remove(); preview(); };
   row.querySelector(".c_hex").oninput = preview;
@@ -671,10 +703,13 @@ function preview() {
   const box = $("preview");
   box.style.background = theme.bg || settings.theme.bg;
   box.innerHTML = Object.entries(colors).map(([n,h]) =>
-    "<span class='pchip' style='background:" + h + "'>" + n + "</span>").join("");
+    "<span class='pchip' style='background:" + h + ";color:" + inkOn(h) + "'>" +
+    n + "</span>").join("");
   $("palette").querySelectorAll(".row").forEach(r => {
     const sw = r.querySelector(".swatch");
-    sw.style.background = r.querySelector(".c_hex").value;
+    const hx = r.querySelector(".c_hex").value;
+    sw.style.background = hx;
+    sw.style.color = inkOn(hx);
     sw.textContent = r.querySelector(".c_name").value;
   });
 }
@@ -699,7 +734,9 @@ $("saveBtn").onclick = async () => {
     multiWeeks: parseInt($("s_mweeks").value,10) || 8,
     multiCols: parseInt($("s_mcols").value,10) || 3,
     startOffset: parseInt($("s_start").value,10) || 0,
-    semesterStart: $("s_semstart").value.trim(),
+    springStart: $("s_spring").value.trim(),
+    summerStart: $("s_summer").value.trim(),
+    fallStart:   $("s_fall").value.trim(),
     showNotes: $("s_notes").checked,
     notesTitle: $("s_notesTitle").value.trim() || "Notes & Ideas",
     notesHeightVh: parseInt($("s_notesH").value,10) || 24,
