@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sim Lab Calendar - Display Settings</title>
 <style>
+      .brkhead, .brk { display:grid; gap:6px; align-items:center;
+                       grid-template-columns:1fr 150px 150px 34px; }
+      .brkhead { font-size:12px; color:#5b6b7c; margin-bottom:3px; }
+      .brk { margin-bottom:6px; }
+      .brk input { margin:0; }
   body { font-family:"Segoe UI",system-ui,sans-serif; margin:0; padding:18px;
          background:#f4f6f8; color:#102a43; }
   h1 { font-size:20px; margin:0 0 4px; }
@@ -142,6 +147,23 @@
           Week numbers restart at WK&nbsp;1 for whichever term has most recently
           begun, so the wall view reads &ldquo;Fall WK 12&rdquo; rather than
           counting on from last year. Use the Monday each term starts.
+        </p>
+        <label style="margin-top:12px">
+          <input type="checkbox" id="s_semtag"> Show the semester and week in
+          the top corner of the board
+        </label>
+
+        <label style="margin-top:12px">Weeks that do not count</label>
+        <div id="brkList"></div>
+        <p style="margin-top:6px">
+          <button class="btn ghost small" id="brkAdd">+ Add a break</button>
+        </p>
+        <p class="hint">
+          Spring break, Thanksgiving week, anything else the semester count
+          should step over. Any week these dates touch is skipped, so the week
+          after a break carries on from the week before it instead of jumping.
+          Give the real dates for this year &mdash; unlike the term start
+          Mondays, these are not assumed to repeat.
         </p>
       </div>
       <div>
@@ -346,6 +368,12 @@ import { firebaseConfig, DEFAULT_SETTINGS } from "./firebase-config.js";
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app), auth = getAuth(app);
+
+// Values typed by staff go back into markup in a few places here, so they get
+// escaped on the way out like everywhere else in the board.
+const esc = v => String(v == null ? "" : v)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 const $ = id => document.getElementById(id);
 
 
@@ -431,6 +459,10 @@ function draw() {
   $("s_spring").value     = settings.springStart || "";
   $("s_summer").value     = settings.summerStart || "";
   $("s_fall").value       = settings.fallStart   || settings.semesterStart || "";
+  $("s_semtag").checked   = settings.showSemester !== false;
+  breaks = (settings.breaks || []).map(b => ({ name: b.name || "",
+    start: b.start || "", end: b.end || "" }));
+  paintBreaks();
   $("s_notes").checked    = settings.showNotes !== false;
   $("s_notesTitle").value = settings.notesTitle || "Notes & Ideas";
   $("s_notesH").value     = settings.notesHeightVh || 24;
@@ -489,6 +521,53 @@ function draw() {
 
   preview();
 }
+
+/* ---------- break weeks ---------- */
+let breaks = [];
+
+function readBreaks() {
+  const host = $("brkList");
+  if (!host) return;
+  breaks = [...host.querySelectorAll(".brk")].map(r => ({
+    name:  r.querySelector(".brk_n").value.trim(),
+    start: r.querySelector(".brk_s").value,
+    end:   r.querySelector(".brk_e").value
+  }));
+}
+
+function paintBreaks() {
+  const host = $("brkList");
+  if (!host) return;
+  if (!breaks.length) {
+    host.innerHTML = "<p class='hint' style='margin:0'>" +
+      "No breaks set &mdash; every week counts.</p>";
+    return;
+  }
+  host.innerHTML =
+    "<div class='brkhead'><span>Name</span><span>First day</span>" +
+    "<span>Last day</span><span></span></div>" +
+    breaks.map((b, i) =>
+      "<div class='brk' data-i='" + i + "'>" +
+        "<input class='brk_n' value='" + esc(b.name) +
+          "' placeholder='Spring Break'>" +
+        "<input class='brk_s' type='date' value='" + esc(b.start) + "'>" +
+        "<input class='brk_e' type='date' value='" + esc(b.end) + "'>" +
+        "<button class='btn ghost small brk_x' title='Remove'>&times;</button>" +
+      "</div>").join("");
+  host.querySelectorAll(".brk_x").forEach((b, i) => b.onclick = () => {
+    readBreaks();
+    breaks.splice(i, 1);
+    paintBreaks();
+  });
+}
+
+$("brkAdd").onclick = () => {
+  readBreaks();
+  breaks.push({ name: "", start: "", end: "" });
+  paintBreaks();
+  const last = $("brkList").querySelector(".brk:last-child .brk_n");
+  if (last) last.focus();
+};
 
 /* ---------- skills ---------- */
 const lineParse = t => String(t||"").split("\n").map(l => l.trim()).filter(Boolean)
@@ -749,6 +828,10 @@ $("saveBtn").onclick = async () => {
     springStart: $("s_spring").value.trim(),
     summerStart: $("s_summer").value.trim(),
     fallStart:   $("s_fall").value.trim(),
+    showSemester: $("s_semtag").checked,
+    breaks: (readBreaks(), breaks
+      .map(b => ({ name: b.name.trim(), start: b.start, end: b.end || b.start }))
+      .filter(b => b.start)),
     showNotes: $("s_notes").checked,
     notesTitle: $("s_notesTitle").value.trim() || "Notes & Ideas",
     notesHeightVh: parseInt($("s_notesH").value,10) || 24,

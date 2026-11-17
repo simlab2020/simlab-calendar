@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sim Lab - Week at a Glance</title>
-<meta name="build" content="2026-11-18-checklist">
+<meta name="build" content="2026-11-18-terms">
 <style>
   :root { color-scheme:dark; --bg:#0d1b2a; --panel:#152c42; --line:#2c4257;
           --fg:#fff; --muted:#8fb3cc; --today:#17334d; --note:#ffd9a0;
@@ -44,6 +44,14 @@
   #nav.browsing button#todayWk { color:#8fe0a0; border-color:#8fe0a0; }
   #clock { margin-left:14px; }
   #admin { display:flex; gap:6px; margin-left:14px; }
+  /* Which term the board is showing, and how far into it. */
+  #semTag { margin-left:14px; white-space:nowrap; font-weight:700;
+            letter-spacing:.5px; font-size:calc(1.0vw * var(--s));
+            color:var(--fg); border:1px solid var(--line); border-radius:7px;
+            padding:5px 12px; background:rgba(255,255,255,.05);
+            text-transform:uppercase; }
+  #semTag:empty, #semTag.hide { display:none; }
+  #semTag.onbreak { color:#e0b36a; border-color:#8a6a1e; }
   .navbar { display:flex; gap:4px; align-items:center; margin-left:14px; }
   .navbar a { text-decoration:none; font-weight:600; font-size:calc(0.85vw * var(--s));
               padding:4px 10px; border-radius:6px; color:var(--muted);
@@ -272,6 +280,17 @@
               color:#eaf1f8; border-radius:12px; padding:2px 9px; font-size:12px;
               margin:3px 4px 0 0; }
   .itemchip.over { border-color:#ff9e9e; color:#ff9e9e; }
+  /* One line per comment, so a day can carry several. */
+  .cmt { display:block; border-radius:4px; padding:1px 7px; margin:2px 0;
+         line-height:1.3; }
+  .cmt.plain { background:transparent; padding:1px 0; }
+  .cmtrow { display:grid; grid-template-columns:1fr 130px 26px 34px; gap:6px;
+            align-items:center; margin-bottom:6px; }
+  .cmtrow input, .cmtrow select { margin:0; }
+  .cmtsw { width:22px; height:22px; border-radius:5px; border:1px solid #c7d4e3;
+           display:inline-block; }
+  .blink { margin:8px 0 0; }
+  .blink a { color:#8fd0ff; font-weight:600; }
   /* Room-setup progress, written by the floor view and only read here. */
   i.ckmark { font-style:normal; font-weight:800; font-size:.78em;
              margin-left:5px; opacity:.85; }
@@ -283,6 +302,16 @@
   .ckmark.bad { color:#ff9e9e; border-color:#7a3a3a; }
   .setupwho { color:#8fb3cc; }
   .setupmiss { color:#ff9e9e; font-size:12.5px; margin-top:4px; line-height:1.5; }
+  .stnhead { display:flex; align-items:center; gap:8px; cursor:pointer;
+             user-select:none; }
+  .stnhead b { flex:none; }
+  .stnsum { flex:1 1 auto; color:#8fb3cc; font-size:13px; overflow:hidden;
+            text-overflow:ellipsis; white-space:nowrap; display:none; }
+  .stncar { flex:none; color:#8fb3cc; font-size:17px; line-height:1;
+            transform:rotate(90deg); transition:transform .15s; }
+  .stn.shut .stnsum { display:block; }
+  .stn.shut .stncar { transform:rotate(0deg); }
+  .stn.shut .stnbody { display:none; }
   .entryhead { display:flex; align-items:center; gap:8px; }
   .entryhead h3 { flex:1; }
 
@@ -341,6 +370,7 @@
     <a href="edit.html">Edit</a>
     <a href="settings.html">Settings</a>
   </nav>
+  <div id="semTag" title="Which semester this is, and which week of it"></div>
   <div id="admin">
     <button id="comment" title="Add a comment to today">&#128172;</button>
     <button id="print" title="Print this view">&#128424;</button>
@@ -410,7 +440,7 @@ const auth = getAuth(fbApp);
 let user = null;
 onAuthStateChanged(auth, u => { user = u; paintAuth(); });
 const DAYS = ["Mon","Tues","Wed","Thurs","Fri","Sat","Sun"];
-console.log("display.html build 2026-11-18-checklist");
+console.log("display.html build 2026-11-18-terms");
 
 let rooms = [], bookings = [], notes = {}, offset = 0, rotating = true;
 let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
@@ -556,6 +586,15 @@ onSnapshot(query(collection(db,"dayNotes"),
   render();
 }, err => console.error("dayNotes listener:", err));
 
+// A day can carry several comments now, each with its own colour. Days saved
+// before that held a single `text`, so read both and nothing disappears.
+function dayComments(n) {
+  if (!n) return [];
+  if (Array.isArray(n.items) && n.items.length)
+    return n.items.filter(c => c && (c.text || "").trim());
+  return (n.text || "").trim() ? [{ text: n.text, color: "" }] : [];
+}
+
 // A banner decoration: an emoji typed straight in, or an image URL.
 function bannerArt(icon) {
   if (!icon) return "";
@@ -627,10 +666,17 @@ function weekTableHTML(weekStart, opts) {
         html += "</td>";
       });
     }
-    if (settings.showComments !== false)
+    if (settings.showComments !== false) {
+      const cs = dayComments(note);
       html += "<td class='notes clickable' data-note='" + key + "' style='color:" +
-              rowInk + "'>" + esc(note.text||"") +
-              (note.text ? "" : "<span class='addnote'>+</span>") + "</td>";
+        rowInk + "'>" + (cs.length ? cs.map(c => {
+          const bg = c.color ? colors[c.color] : "";
+          return bg
+            ? "<span class='cmt' style='background:" + bg + ";color:" +
+              contrastOn(bg) + "'>" + esc(c.text) + "</span>"
+            : "<span class='cmt plain'>" + esc(c.text) + "</span>";
+        }).join("") : "<span class='addnote'>+</span>") + "</td>";
+    }
     html += "</tr>";
   }
   return html + "</table>";
@@ -641,6 +687,15 @@ function setupMark(b) {
   const m = ckMark(b);
   return m ? "<i class='ckmark" + (m === "\u26a0" ? " bad" : m === "\u2713" ? " ok" : "") +
              "' title='Room setup'>" + m + "</i>" : "";
+}
+
+// Only http(s) addresses get through. A javascript: link saved onto a shared
+// board would run for everyone who tapped it.
+function safeUrl(u) {
+  const t = String(u || "").trim();
+  if (!t) return "";
+  if (/^https?:\/\//i.test(t)) return t;
+  return /^[\w.-]+\.[a-z]{2,}([\/?#]|$)/i.test(t) ? "https://" + t : "";
 }
 
 function weekRangeText(weekStart) {
@@ -664,6 +719,8 @@ function renderSingle() {
     weekStart.toLocaleDateString(undefined,{month:"long",day:"numeric"}) + " - " +
     addDays(weekStart,6).toLocaleDateString(undefined,
       {month:"long",day:"numeric",year:"numeric"});
+
+  paintSemTag(weekStart);
 
   const host = document.getElementById("board");
   host.style.removeProperty("--cols");
@@ -697,6 +754,8 @@ function renderMulti() {
     first.toLocaleDateString(undefined,{month:"long",day:"numeric"}) + " - " +
     last.toLocaleDateString(undefined,{month:"long",day:"numeric",year:"numeric"});
 
+  paintSemTag(first);
+
   const host = document.getElementById("board");
   host.style.setProperty("--cols", cols);
   let html = "<div id='panels'>";
@@ -716,6 +775,22 @@ function renderMulti() {
 // Counting runs from whichever semester started most recently on or before
 // the week in question, so the numbering restarts at WK 1 each term instead
 // of running to WK 40 by summer.
+// Weeks that do not count towards the number: spring break, a holiday week,
+// anything listed in Settings. Held as the Monday of each week, so checking
+// one is a single string compare.
+function breakWeeks() {
+  const out = {};
+  (settings.breaks || []).forEach(b => {
+    if (!b || !b.start) return;
+    const s0 = mondayOf(new Date(b.start + "T00:00:00"));
+    const e0 = mondayOf(new Date((b.end || b.start) + "T00:00:00"));
+    if (isNaN(s0) || isNaN(e0) || e0 < s0) return;
+    for (let c = new Date(s0); c <= e0; c = addDays(c, 7))
+      out[iso(c)] = b.name || "Break";
+  });
+  return out;
+}
+
 function semesterOf(d) {
   const mon = mondayOf(d);
   const base3 = [
@@ -744,21 +819,46 @@ function semesterOf(d) {
   // the latest term that has already begun
   let pick = terms[0];
   for (const t of terms) if (t.start <= mon) pick = t;
-  return { name: pick.name,
-           week: Math.round((mon - pick.start) / 604800000) + 1 };
+
+  // Count the weeks rather than subtracting dates, so a break week can simply
+  // be skipped: the week after spring break carries on from the week before it.
+  const skip = breakWeeks();
+  let week = 0;
+  for (let c = new Date(pick.start); c <= mon; c = addDays(c, 7))
+    if (!skip[iso(c)]) week++;
+  const onBreak = skip[iso(mon)] || "";
+  return { name: pick.name, year: pick.start.getFullYear(),
+           week: onBreak ? null : week, breakName: onBreak };
 }
 
 function weekNumber(d) {
   const t = semesterOf(d);
   if (!t) return Math.round((d - mondayOf(new Date())) / 604800000);
-  return t.week;
+  return t.week == null ? 0 : t.week;
 }
 
-// "WK 12" or "Fall WK 12" once the terms are named.
+// "WK 12", "Fall WK 12", or the name of the break when the week is one.
 function weekTag(d) {
   const t = semesterOf(d);
   if (!t) return "WK " + weekNumber(d);
+  if (t.week == null) return (t.breakName || "BREAK").toUpperCase();
   return (t.name ? t.name + " " : "") + "WK " + t.week;
+}
+
+// The header badge: "FALL 2026 - WEEK 13", or "SPRING 2027 - SPRING BREAK".
+function semesterBadge(d) {
+  const t = semesterOf(d);
+  if (!t) return "";
+  const term = (t.name ? t.name + " " : "") + t.year;
+  return term + " \u00b7 " + (t.week == null
+    ? (t.breakName || "Break") : "Week " + t.week);
+}
+function paintSemTag(d) {
+  const el = document.getElementById("semTag");
+  if (!el) return;
+  const t = semesterOf(d);
+  el.textContent = settings.showSemester === false ? "" : semesterBadge(d);
+  el.classList.toggle("onbreak", !!(t && t.week == null));
 }
 
 function weekHasBookings(off) {
@@ -1239,6 +1339,10 @@ function entryHtml(b, showRoom) {
         flagged.map(t => "\u26a0 " + esc(t)).join("<br>") + "</div>" : "") +
       "</div>";
   }
+  const link = safeUrl(b.link);
+  const linkRow = link
+    ? "<p class='blink'><a href='" + esc(link) + "' target='_blank' " +
+      "rel='noopener noreferrer'>Open link \u2197</a></p>" : "";
   const editBtn = user
     ? "<button class='btn ghost small edit-one' data-id='" + b.id + "'>Edit</button>"
     : "";
@@ -1250,7 +1354,7 @@ function entryHtml(b, showRoom) {
          "</h3>" + editBtn + "</div>" +
          "<div class='when'>" + (b.block ? esc(b.block) : "Time not set") +
          "</div>" + (rows ? "<dl class='kv'>" + rows + "</dl>" : "") +
-         ck + stn + itm + "</div>";
+         linkRow + ck + stn + itm + "</div>";
 }
 
 function openPopup(title, key, bodyHtml) {
@@ -1466,11 +1570,50 @@ function dayNoteForm(key) {
   if (!user) return;
   stopTimers();
   const n = notes[key] || {};
+  let items = dayComments(n).map(c => ({ text: c.text || "", color: c.color || "" }));
+  if (!items.length) items = [{ text: "", color: "" }];
+
+  const cOpts = sel => "<option value=''" + (sel ? "" : " selected") +
+    ">no colour</option>" + Object.keys(colors).map(k =>
+      "<option value='" + esc(k) + "'" + (k === sel ? " selected" : "") + ">" +
+      esc(k) + "</option>").join("");
+
+  const readRows = () => {
+    const host = document.getElementById("cmtRows");
+    if (!host) return;
+    items = [...host.querySelectorAll(".cmtrow")].map(r => ({
+      text: r.querySelector(".cmt_t").value,
+      color: r.querySelector(".cmt_c").value }));
+  };
+  const paintRows = () => {
+    const host = document.getElementById("cmtRows");
+    host.innerHTML = items.map((c, i) =>
+      "<div class='cmtrow' data-i='" + i + "'>" +
+        "<input class='cmt_t' value='" + esc(c.text) +
+          "' placeholder='Marta out &middot; Lauren out @ 1:00'>" +
+        "<select class='cmt_c'>" + cOpts(c.color) + "</select>" +
+        "<span class='cmtsw' style='background:" +
+          (colors[c.color] || "transparent") + "'></span>" +
+        "<button class='btn ghost small cmt_x' title='Remove this comment'>" +
+          "&times;</button>" +
+      "</div>").join("");
+    host.querySelectorAll(".cmt_c").forEach(sel => sel.onchange = () => {
+      readRows(); paintRows();
+    });
+    host.querySelectorAll(".cmt_x").forEach((b, i) => b.onclick = () => {
+      readRows();
+      items.splice(i, 1);
+      if (!items.length) items = [{ text: "", color: "" }];
+      paintRows();
+    });
+  };
+
   document.getElementById("cardBody").innerHTML =
     "<div class='f'>" +
     "<label>Comments (right-hand column)</label>" +
-    "<input id='dn_text' value='" + esc(n.text||"") +
-      "' placeholder='Marta out &middot; Lauren out @ 1:00'>" +
+    "<div id='cmtRows'></div>" +
+    "<p><button class='btn ghost small' id='cmt_add'>+ Add another comment" +
+      "</button></p>" +
     "<label>Full-width banner — leave blank for a normal day</label>" +
     "<input id='dn_banner' value='" + esc(n.banner||"") +
       "' placeholder='THANKSGIVING DAY'>" +
@@ -1481,15 +1624,29 @@ function dayNoteForm(key) {
       "<button class='btn' id='dn_save'>Save</button>" +
       "<button class='btn ghost' id='dn_cancel'>Cancel</button>" +
     "</p></div>";
-  document.getElementById("cardRoom").textContent = "Comment for this day";
+  document.getElementById("cardRoom").textContent = "Comments for this day";
+  paintRows();
+  document.getElementById("cmt_add").onclick = () => {
+    readRows();
+    items.push({ text: "", color: "" });
+    paintRows();
+    const last = document.querySelector("#cmtRows .cmtrow:last-child .cmt_t");
+    if (last) last.focus();
+  };
   document.getElementById("dn_cancel").onclick = closePopup;
   document.getElementById("dn_save").onclick = async () => {
     const v = id => document.getElementById(id).value.trim();
-    await setDoc(doc(db,"dayNotes",key),
-      { date: key, text: v("dn_text"), banner: v("dn_banner"),
-        icon: v("dn_icon"), updatedBy: user.email });
-    notes[key] = { date:key, text:v("dn_text"), banner:v("dn_banner"),
-                   icon:v("dn_icon") };
+    readRows();
+    const keep = items.map(c => ({ text: (c.text || "").trim(),
+                                   color: c.color || "" }))
+                      .filter(c => c.text);
+    // `text` stays written as the lot joined up, so anything still reading
+    // the old single-comment field keeps working.
+    const rec = { date: key, items: keep, text: keep.map(c => c.text).join(" \u00b7 "),
+                  banner: v("dn_banner"), icon: v("dn_icon"),
+                  updatedBy: user.email };
+    await setDoc(doc(db,"dayNotes",key), rec);
+    notes[key] = rec;
     render();
     closePopup();
   };
@@ -1693,6 +1850,9 @@ function editForm(b) {
       "<div><label>Contact</label><input id='e_contact' value='" +
         esc(b ? (b.contact||"") : "") + "'></div>" +
     "</div>" +
+    "<label>Link — a syllabus, a Teams meeting, a document (optional)</label>" +
+    "<input id='e_link' type='url' placeholder='https://\u2026' value='" +
+      esc(b ? (b.link||"") : "") + "'>" +
     "<label>Setup notes (whole room)</label><input id='e_setup' value='" +
       esc(b ? (b.setup||"") : "") + "'>" +
     "<div id='stationBlock'></div>" +
@@ -1768,6 +1928,14 @@ function editForm(b) {
     (stationsByRoom[stnTab] || []).forEach(x => have[x.id] = x);
     host.innerHTML = "<label>What happens at each station" +
       (chosen.length > 1 ? " — " + esc(room.label||"") : "") + "</label>" + tabs +
+      // A room with a dozen beds was a very long scroll. Rows start shut, and
+      // the ones that already have a skill on them start open.
+      "<div class='quickpick' style='margin-bottom:6px'>" +
+        "<button class='btn ghost small' id='stn_exp'>Expand all</button>" +
+        "<button class='btn ghost small' id='stn_col'>Collapse all</button>" +
+        "<span class='tag'>" + list.length + " station" +
+          (list.length === 1 ? "" : "s") + "</span>" +
+      "</div>" +
       list.map(st => {
         const v = have[st.id] || {};
         const fits = skills.filter(k => !k.kind || k.kind === st.type);
@@ -1777,8 +1945,12 @@ function editForm(b) {
             ">" + esc(k.name) + "</option>").join("") +
           "<option value='__other'" + (v.skill && !known ? " selected" : "") +
           ">Something else…</option>";
-        return "<div class='stn'><b>" + esc(st.label) + "</b>" +
+        return "<div class='stn" + (v.skill ? "" : " shut") +
+          "'><div class='stnhead'><b>" + esc(st.label) + "</b>" +
           "<span class='tag'>" + esc(st.type||"") + "</span>" +
+          "<span class='stnsum' data-id='" + st.id + "'>" +
+            esc(v.skill || "nothing yet") + "</span>" +
+          "<span class='stncar'>\u203a</span></div><div class='stnbody'>" +
           (fits.length
             ? "<div class='skrow'><select class='st_pick' data-id='" + st.id + "'>" +
               opts + "</select>" +
@@ -1791,10 +1963,26 @@ function editForm(b) {
             esc(v.skill||"") + "'" + (fits.length && known ? " hidden" : "") + ">" +
           "<input class='st_sup' data-id='" + st.id +
             "' placeholder='Supplies needed' value='" + esc(v.supplies||"") + "'>" +
-          "</div>";
+          "</div></div>";
       }).join("");
     wireStationTabs();
     wireSkillPickers();
+    wireStationFolds();
+  }
+
+  // Tapping the row's header opens or shuts it. The inputs stay in the DOM
+  // either way, so a shut row still saves what is typed in it.
+  function wireStationFolds() {
+    const host = document.getElementById("stationBlock");
+    if (!host) return;
+    host.querySelectorAll(".stnhead").forEach(hd => hd.onclick = () =>
+      hd.parentNode.classList.toggle("shut"));
+    const all = sh => host.querySelectorAll(".stn")
+      .forEach(x => x.classList.toggle("shut", sh));
+    const e = document.getElementById("stn_exp");
+    const c = document.getElementById("stn_col");
+    if (e) e.onclick = () => all(false);
+    if (c) c.onclick = () => all(true);
   }
 
   // Picking a skill fills the supply line for you; "Something else" lets you
@@ -1810,6 +1998,8 @@ function editForm(b) {
       free.hidden = true;
       free.value = sel.value;
       if (k && !sup.value.trim()) sup.value = skillSupplies(k);
+      const sum = document.querySelector(".stnsum[data-id='" + id + "']");
+      if (sum) sum.textContent = free.value || "nothing yet";
     });
     document.querySelectorAll(".st_drill").forEach(b => b.onclick = () => {
       const sel = document.querySelector(".st_pick[data-id='" + b.dataset.id + "']");
@@ -1981,6 +2171,7 @@ function editForm(b) {
       course: v("e_course"), icon: v("e_icon"),
       block: v("e_block"), instructor: v("e_inst"),
       contact: v("e_contact"), setup: v("e_setup"),
+      link: safeUrl(v("e_link")),
       groupSize: parseInt(v("e_group"),10) || 0,
       color: v("e_color"), status: v("e_status"),
       updatedBy: user.email, updatedAt: serverTimestamp()

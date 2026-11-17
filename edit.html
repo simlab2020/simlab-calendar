@@ -106,6 +106,12 @@ import { firebaseConfig, COLORS, DEFAULT_SETTINGS } from "./firebase-config.js";
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app), auth = getAuth(app);
+
+// Comments are typed by staff and dropped straight into the table, so they
+// get escaped on the way out, the same as on the board.
+const esc = v => String(v == null ? "" : v)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 const DAYS = ["Mon","Tues","Wed","Thurs","Fri","Sat","Sun"];
 
 // Black or white, whichever actually reads on the colour behind it. Any
@@ -189,7 +195,7 @@ function draw() {
             ";color:"+inkOn(bg)+"'>"+(b.course||"")+"</span>"; }).join("") +
         "</td>";
     });
-    h += "<td style='text-align:left'>"+((notes[key]||{}).text||"")+"</td></tr>";
+    h += "<td style='text-align:left'>"+esc(dayText(notes[key]))+"</td></tr>";
   }
   $("grid").innerHTML = h;
 
@@ -280,18 +286,35 @@ $("del").onclick = async () => {
   }
 };
 
+// A day can carry several comments, each with a colour. This page is the
+// plain desk fallback, so it edits them as one line separated by " \u00b7 " and
+// keeps whatever colours were already set, in order. Use the week board to
+// pick the colours.
+function dayItems(n) {
+  if (!n) return [];
+  if (Array.isArray(n.items) && n.items.length)
+    return n.items.filter(c => c && (c.text||"").trim());
+  return (n.text||"").trim() ? [{ text: n.text, color: "" }] : [];
+}
+const dayText = n => dayItems(n).map(c => c.text).join(" \u00b7 ");
+
 $("note").onclick = async () => {
   const which = prompt("Which day? (1=Mon ... 7=Sun)");
   const i = parseInt(which,10) - 1;
   if (isNaN(i) || i < 0 || i > 6) return;
   const key = iso(addDays(weekStart,i));
-  const text = prompt("Comments for " + key + ":", (notes[key]||{}).text || "");
+  const was = dayItems(notes[key]);
+  const text = prompt("Comments for " + key +
+    " \u2014 separate several with \u00b7 :", dayText(notes[key]));
   if (text === null) return;
   const banner = prompt("Full-row banner (DEC FINALS, THANKSGIVING)? Blank for none:",
                         (notes[key]||{}).banner || "");
+  const items = text.split("\u00b7").map(t => t.trim()).filter(Boolean)
+    .map((t, n) => ({ text: t, color: was[n] ? (was[n].color || "") : "" }));
   // Doc id is the date AND date is stored as a field, so range
   // queries work. Do not query on __name__ - it needs full paths.
-  await setDoc(doc(db,"dayNotes",key), { date: key, text, banner: banner || "" });
+  await setDoc(doc(db,"dayNotes",key), { date: key, items,
+    text: items.map(c => c.text).join(" \u00b7 "), banner: banner || "" });
   load();
 };
 

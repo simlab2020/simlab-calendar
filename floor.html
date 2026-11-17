@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sim Lab - Floor View</title>
-<meta name="build" content="2026-11-18-checklist">
+<meta name="build" content="2026-11-18-terms">
 <style>
   :root { color-scheme:dark; --bg:#0d1b2a; --panel:#152c42; --line:#2c4257;
           --fg:#fff; --muted:#8fb3cc; --note:#ffd9a0; }
@@ -60,9 +60,9 @@
                 border-radius:7px; padding:5px 11px; font-size:13px;
                 font-weight:600; cursor:pointer; font-family:inherit; }
   .seg button.on { background:#1f4e79; color:#fff; }
-  #tintBox { display:flex; align-items:center; gap:6px; font-size:13px;
+  #tintBox, .tgl { display:flex; align-items:center; gap:6px; font-size:13px;
              color:var(--muted); cursor:pointer; white-space:nowrap; }
-  #tintBox input { width:auto; cursor:pointer; }
+  #tintBox input, .tgl input { width:auto; cursor:pointer; }
   #hint3d { position:absolute; left:10px; top:10px; background:rgba(255,255,255,.9);
             color:#2b3744; padding:6px 11px; border-radius:9px; font-size:12.5px;
             pointer-events:none; max-width:70%;
@@ -130,8 +130,13 @@
   .chip { display:inline-block; border-radius:11px; padding:2px 9px; font-size:12px;
           background:#0f1f30; border:1px solid var(--line); margin:3px 4px 0 0; }
   .chip.over { border-color:#ff9e9e; color:#ff9e9e; }
+  /* Furniture: there to read the room by, not to click. Kept quiet so the
+     beds and tables still carry the eye. */
+  .prop { fill-opacity:.42; stroke:#0d1b2a; stroke-width:1; pointer-events:none; }
 
   /* ---- setup checklist ---- */
+  .blink { margin-top:7px; }
+  .blink a { color:#8fd0ff; font-weight:600; font-size:13px; }
   .ckline { display:flex; align-items:center; gap:8px; margin-top:9px;
             flex-wrap:wrap; }
   .pill { font-size:12px; font-weight:700; border-radius:11px; padding:3px 10px;
@@ -220,6 +225,9 @@
   <label id="tintBox" style="display:none">
     <input type="checkbox" id="showBook" checked> Shade booked rooms
   </label>
+  <label class="tgl" title="Chairs, computers, shelves and the rest">
+    <input type="checkbox" id="showProps" checked> Furniture
+  </label>
   <div id="when">
     <button id="prev" title="Previous day">&#8249;</button>
     <input type="date" id="date">
@@ -270,7 +278,8 @@
   <span><i style="background:#ff9e9e"></i> Supplies low</span>
   <span style="color:#8fe0a0">&#10003; Set up</span>
   <span style="color:#ffbe76">&#9888; Something missing</span>
-  <span>Beds and tables are drawn where they stand.</span>
+  <span><i style="background:#8d9bab;opacity:.55"></i> Furniture</span>
+  <span>Everything is drawn where it stands.</span>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -378,6 +387,15 @@ function watchDay() {
 }
 
 /* ---------- helpers ---------- */
+// Only http(s) addresses get through, so a javascript: link saved onto the
+// board cannot run for whoever taps it.
+function safeUrl(u) {
+  const t = String(u || "").trim();
+  if (!t) return "";
+  if (/^https?:\/\//i.test(t)) return t;
+  return /^[\w.-]+\.[a-z]{2,}([\/?#]|$)/i.test(t) ? "https://" + t : "";
+}
+
 const roomOf = id => rooms.find(r => r.id === id) || null;
 const roomLabelOf = id => (rooms.find(r => r.id === id) || {}).label || id;
 const itemLow = it => !!it.par && (it.qty || 0) <= it.par;
@@ -476,6 +494,31 @@ function draw() {
       g += "<line class='door' x1='" + x1 + "' y1='" + y1 + "' x2='" + x2 +
            "' y2='" + y2 + "' stroke='#0d1b2a'></line>";
     });
+
+    // Everything else that stands in the room: chairs, computers, shelves,
+    // sinks. The 3D and walk views already drew these from the same list; the
+    // flat map showed bare boxes. Drawn first, so a bed sits on top of them.
+    if (showProps) {
+      const TY = plan.types || {};
+      // A bed or table is already drawn below, from the room's station list.
+      const stIds = {};
+      rooms.filter(x => x.geom && x.geom.x1 === pr.x1 && x.geom.y1 === pr.y1)
+           .forEach(x => (x.stations||[]).forEach(st2 => stIds[st2.id] = 1));
+      for (const p of (pr.props || [])) {
+        if (stIds[p.id]) continue;
+        const spec = TY[p.t] || { w: 0.6, l: 0.6, c: 0x7a8794 };
+        const sc = p.s || 1;
+        const pw = ((p.mw || spec.w) * sc) * U;
+        const pl = ((p.ml || spec.l) * sc) * U;
+        const cx = pr.x1 + p.x * U, cy = pr.y1 + p.z * U;
+        if (cx < cell.x - 2 || cx > cell.x + w + 2) continue;   // the other half
+        const hex = "#" + ("000000" + (spec.c || 0x7a8794).toString(16)).slice(-6);
+        g += "<g transform='translate(" + cx + "," + cy + ") rotate(" +
+             (p.r || 0) + ")'><rect class='prop' x='" + (-pw/2) + "' y='" +
+             (-pl/2) + "' width='" + pw + "' height='" + pl +
+             "' rx='3' style='fill:" + hex + "'></rect></g>";
+      }
+    }
 
     // beds and tables, at their real positions
     if (r && r.stations) {
@@ -577,6 +620,10 @@ function side() {
             "<span class='chip'>" +
             esc((inventory.find(i => i.id === x.id)||{}).name || x.name || x.id) +
             ((x.qty||1) > 1 ? " ×" + x.qty : "") + "</span>").join("") + "</div>" : "") +
+          (safeUrl(b.link)
+            ? "<div class='blink'><a href='" + esc(safeUrl(b.link)) +
+              "' target='_blank' rel='noopener noreferrer'>Open link \u2197</a></div>"
+            : "") +
           ckStrip(b) +
           "</div>";
       }).join("")
@@ -640,7 +687,7 @@ function side() {
 // Rooms, walls and furniture built from the same floorplan the 2D map uses,
 // coloured live by the day's bookings. Map stays SVG because it prints.
 const S3 = 1/32, WALL_H = 2.7, WALL_T = 0.11;
-let mode = "map", showBookings = true;
+let mode = "map", showBookings = true, showProps = true;
 let scene, cam3, camW, renderer, raf = null, world3 = null, picks = [], labels3 = [];
 let ceilings = [];
 let orbit = { yaw: -0.9, pitch: 0.62, dist: 60, cx: 0, cz: 0, framed: false };
@@ -1117,6 +1164,14 @@ document.querySelectorAll("#modes button").forEach(b =>
 document.getElementById("showBook").onchange = e => {
   showBookings = e.target.checked;
   if (mode !== "map") { buildWorld(); }
+  else draw();
+};
+
+// Chairs, computers, shelves and the rest. On by default; off when the map is
+// wanted as a plain booking grid.
+document.getElementById("showProps").onchange = e => {
+  showProps = e.target.checked;
+  if (mode === "map") draw(); else buildWorld();
 };
 
 
@@ -1607,7 +1662,7 @@ setInterval(() => {
 $("clock").textContent =
   new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
 
-console.log("floor.html build 2026-11-18-checklist");
+console.log("floor.html build 2026-11-18-terms");
 watchDay();
 draw();
 </script>
