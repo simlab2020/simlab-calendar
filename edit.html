@@ -8,6 +8,12 @@
   body { font-family:"Segoe UI",system-ui,sans-serif; margin:0; padding:16px;
          background:#f4f6f8; color:#102a43; }
   h1 { font-size:20px; margin:0 0 12px; }
+  .navbar { display:flex; gap:6px; margin:0 0 14px; flex-wrap:wrap; }
+  .navbar a { text-decoration:none; font-weight:600; font-size:13px;
+              padding:6px 12px; border-radius:6px; color:#1f3864;
+              border:1px solid #c7d4e3; background:#fff; }
+  .navbar a:hover { border-color:#1f3864; }
+  .navbar a.here { background:#1f3864; color:#fff; border-color:#1f3864; }
   button { padding:8px 14px; border:0; border-radius:5px; background:#1f3864;
            color:#fff; font-weight:600; cursor:pointer; }
   button.ghost { background:#fff; color:#1f3864; border:1px solid #1f3864; }
@@ -46,6 +52,12 @@
 </div>
 
 <div id="app" style="display:none">
+  <nav class="navbar">
+    <a href="display.html">Week board</a>
+    <a href="floor.html">Floor view</a>
+    <a href="edit.html" class="here">Edit schedule</a>
+    <a href="settings.html">Settings</a>
+  </nav>
   <h1>Sim Lab Calendar - Staff Edit</h1>
   <div id="bar">
     <button class="ghost" id="prev">&lt; Previous week</button>

@@ -8,6 +8,12 @@
   body { font-family:"Segoe UI",system-ui,sans-serif; margin:0; padding:18px;
          background:#f4f6f8; color:#102a43; }
   h1 { font-size:20px; margin:0 0 4px; }
+  .navbar { display:flex; gap:6px; margin:0 0 14px; flex-wrap:wrap; }
+  .navbar a { text-decoration:none; font-weight:600; font-size:13px;
+              padding:6px 12px; border-radius:6px; color:#1f3864;
+              border:1px solid #c7d4e3; background:#fff; }
+  .navbar a:hover { border-color:#1f3864; }
+  .navbar a.here { background:#1f3864; color:#fff; border-color:#1f3864; }
   h2 { font-size:15px; color:#2e74b5; margin:22px 0 8px; }
   .hint { font-size:13px; color:#5a5a5a; margin:0 0 10px; max-width:640px;
           line-height:1.5; }
@@ -61,6 +67,12 @@
 </div>
 
 <div id="app" style="display:none">
+  <nav class="navbar">
+    <a href="display.html">Week board</a>
+    <a href="floor.html">Floor view</a>
+    <a href="edit.html">Edit schedule</a>
+    <a href="settings.html" class="here">Settings</a>
+  </nav>
   <h1>Display Settings</h1>
   <p class="hint">
     Changes save to the database and reach the wall screen within a second — no need to
@@ -205,10 +217,28 @@
   </div>
 
   <div class="panel">
+    <h2 style="margin-top:0">Skills &amp; what each one needs</h2>
+    <p class="hint">
+      A list of the skills you run, each with the supplies it takes. When someone
+      sets up a bed they pick the skill from a dropdown and the supplies fill in
+      for them &mdash; no typing, and no two people writing the same thing three
+      ways. <b>Drill down</b> opens the full list for that skill.
+    </p>
+    <div id="skills"></div>
+    <p>
+      <button class="ghost tiny" id="skAdd">+ Add a skill</button>
+      <button class="ghost tiny" id="skSeed">Start from a common set</button>
+    </p>
+  </div>
+
+  <div class="panel">
     <h2 style="margin-top:0">Equipment inventory</h2>
     <p class="hint">
-      What the lab owns and how many. Once an item is listed here, a booking can
-      reserve it, and the board will warn when more are booked than exist.
+      What the lab owns, how many, and where it is kept. Once an item is listed
+      here a booking can reserve it, the board warns when more are booked than
+      exist, and setup sheets say which room to fetch it from.
+      <b>Reorder at</b> flags the item as low once the count drops that far —
+      leave it at 0 for things you never reorder.
     </p>
     <table id="inv"><tbody></tbody></table>
     <p>
@@ -230,6 +260,34 @@
     </p>
     <table id="rooms"><tbody></tbody></table>
   </div>
+
+  <dialog id="skDlg">
+    <h3 id="skTitle">Skill</h3>
+    <label>Name &mdash; what staff will pick from the list</label>
+    <input id="sk_name" type="text" placeholder="IV Start">
+    <label>Station it usually runs at</label>
+    <select id="sk_kind">
+      <option value="">any</option><option value="bed">bed</option>
+      <option value="table">table</option>
+    </select>
+    <label>Minutes it usually takes (optional)</label>
+    <input id="sk_mins" type="number" min="0" step="5">
+    <label>Supplies &mdash; one per line, &ldquo;item x count&rdquo;</label>
+    <textarea id="sk_items" rows="7" style="width:100%;padding:8px;
+      border:1px solid #c7d4e3;border-radius:4px;font-family:inherit;font-size:14px"
+      placeholder="IV start kit x2&#10;Tourniquet x1&#10;Gloves, box x1&#10;Sharps container x1"></textarea>
+    <p class="hint" style="margin-top:6px">
+      Names that match something in the inventory will show how many the lab has
+      and flag low stock.
+    </p>
+    <label>Notes shown with the skill (optional)</label>
+    <input id="sk_note" type="text" placeholder="Prime tubing before the group arrives">
+    <p style="margin-top:14px">
+      <button id="skSave">Save</button>
+      <button class="ghost" id="skCancel">Cancel</button>
+      <button class="danger" id="skDel">Delete</button>
+    </p>
+  </dialog>
 
   <dialog id="stDlg">
     <h3 id="stTitle">Stations</h3>
@@ -279,6 +337,7 @@ const THEME_FIELDS = [
 let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
 let rooms = [], roomStations = {};
 let inventory = [], invDeleted = [];
+let skills = [], skDeleted = [], skEditing = null;
 
 $("signin").onclick = async () => {
   try { await signInWithEmailAndPassword(auth, $("email").value, $("pass").value); }
@@ -300,6 +359,11 @@ async function load() {
     settings.theme  = Object.assign({}, DEFAULT_SETTINGS.theme, s.theme || {});
     settings.colors = s.colors || DEFAULT_SETTINGS.colors;
   }
+  const sk = await getDocs(collection(db,"skills"));
+  skills = sk.docs.map(d => ({id:d.id, ...d.data()}))
+             .sort((a,b) => (a.name||"").localeCompare(b.name||""));
+  skDeleted = [];
+
   const iv = await getDocs(collection(db,"inventory"));
   inventory = iv.docs.map(d => ({id:d.id, ...d.data()}))
                 .sort((a,b) => (a.name||"").localeCompare(b.name||""));
@@ -378,6 +442,7 @@ function draw() {
     tb.appendChild(tr);
   });
 
+  drawSkills();
   drawInventory();
 
   tb.querySelectorAll(".st_edit").forEach(b =>
@@ -386,11 +451,101 @@ function draw() {
   preview();
 }
 
+/* ---------- skills ---------- */
+const lineParse = t => String(t||"").split("\n").map(l => l.trim()).filter(Boolean)
+  .map(l => {
+    const m = l.match(/^(.*?)\s*[x\u00d7]\s*(\d+)$/i);
+    return m ? { name: m[1].trim(), qty: parseInt(m[2],10) || 1 }
+             : { name: l, qty: 1 };
+  });
+const lineJoin = items => (items||[])
+  .map(i => i.name + (i.qty > 1 ? " x" + i.qty : "")).join("\n");
+
+function drawSkills() {
+  const host = $("skills");
+  if (!skills.length) {
+    host.innerHTML = "<p class='hint'>No skills yet. Add the ones you run most " +
+      "often &mdash; IV Start, Foley, Trach Care &mdash; and staff stop retyping them.</p>";
+    return;
+  }
+  host.innerHTML = "<table><tbody><tr><th>Skill</th><th>Runs at</th>" +
+    "<th>Supplies</th><th>Minutes</th><th></th></tr>" +
+    skills.map((k,i) =>
+      "<tr><td><b>" + (k.name||"") + "</b></td>" +
+      "<td>" + (k.kind || "any") + "</td>" +
+      "<td>" + ((k.items||[]).length) + " item(s)</td>" +
+      "<td>" + (k.mins || "") + "</td>" +
+      "<td><button class='ghost tiny sk_edit' data-i='" + i + "'>Drill down</button>" +
+      "</td></tr>").join("") + "</tbody></table>";
+  host.querySelectorAll(".sk_edit").forEach(b =>
+    b.onclick = () => openSkill(+b.dataset.i));
+}
+
+function openSkill(i) {
+  skEditing = i;
+  const k = i < 0 ? { name:"", kind:"", mins:"", items:[], note:"" } : skills[i];
+  $("skTitle").textContent = i < 0 ? "New skill" : k.name || "Skill";
+  $("sk_name").value  = k.name || "";
+  $("sk_kind").value  = k.kind || "";
+  $("sk_mins").value  = k.mins || "";
+  $("sk_items").value = lineJoin(k.items);
+  $("sk_note").value  = k.note || "";
+  $("skDel").style.display = i < 0 ? "none" : "inline-block";
+  $("skDlg").showModal();
+}
+
+$("skAdd").onclick    = () => openSkill(-1);
+$("skCancel").onclick = () => $("skDlg").close();
+$("skSave").onclick = () => {
+  const k = { name: $("sk_name").value.trim(),
+              kind: $("sk_kind").value,
+              mins: parseInt($("sk_mins").value,10) || 0,
+              items: lineParse($("sk_items").value),
+              note: $("sk_note").value.trim() };
+  if (!k.name) { alert("Give the skill a name."); return; }
+  if (skEditing < 0) skills.push(k);
+  else skills[skEditing] = Object.assign({}, skills[skEditing], k);
+  skills.sort((a,b) => (a.name||"").localeCompare(b.name||""));
+  $("skDlg").close(); drawSkills();
+};
+$("skDel").onclick = () => {
+  if (skEditing < 0) return;
+  if (!confirm("Delete this skill? Bookings already using it keep their text."))
+    return;
+  const k = skills[skEditing];
+  if (k.id) skDeleted.push(k.id);
+  skills.splice(skEditing,1);
+  $("skDlg").close(); drawSkills();
+};
+
+$("skSeed").onclick = () => {
+  const seed = [
+    ["IV Start","bed",20,"IV start kit x2\nTourniquet x1\nGloves, box x1\nSharps container x1\nAlcohol wipes x1"],
+    ["Foley Catheter","bed",25,"Foley kit x1\nSterile gloves x2\nLubricant x1\nDrainage bag x1"],
+    ["Trach Care","bed",25,"Trach care kit x1\nSuction catheter x2\nSterile gloves x2\nNormal saline x1"],
+    ["NG Tube","bed",20,"NG tube x1\nLubricant x1\n60mL syringe x1\npH strips x1\nTape x1"],
+    ["Wound Care","bed",30,"Dressing tray x1\nSterile gauze x4\nSaline x1\nSterile gloves x2"],
+    ["Vital Signs","bed",15,"BP cuff x1\nStethoscope x1\nPulse ox x1\nThermometer x1"],
+    ["Head-to-Toe Assessment","bed",30,"Stethoscope x1\nPenlight x1\nReflex hammer x1"],
+    ["Medication Pass","table",25,"Med cart x1\nMAR sheets x1\nMed cups x10\nGloves, box x1"],
+    ["Injections","table",20,"Injection pads x4\nSyringes 3mL x10\nAlcohol wipes x1\nSharps container x1"],
+    ["Sterile Field","table",20,"Sterile drape x2\nSterile gloves x4\nMask x2"],
+  ].map(([name,kind,mins,items]) => ({name,kind,mins,items:lineParse(items),note:""}));
+  const have = new Set(skills.map(k => (k.name||"").toLowerCase()));
+  let added = 0;
+  seed.forEach(k => { if (!have.has(k.name.toLowerCase())) { skills.push(k); added++; } });
+  skills.sort((a,b) => (a.name||"").localeCompare(b.name||""));
+  drawSkills();
+  $("status").textContent = added + " skill(s) added — edit any of them, then Save.";
+};
+
 /* ---------- inventory ---------- */
 function drawInventory() {
   const tb = $("inv").querySelector("tbody");
-  tb.innerHTML = "<tr><th>Item</th><th>How many</th><th>Category</th>" +
-                 "<th>Notes</th><th></th></tr>";
+  const roomOpts = rooms.map(r => "<option value='" + r.id + "'>" +
+                    (r.label || r.id) + "</option>").join("");
+  tb.innerHTML = "<tr><th>Item</th><th>How many</th><th>Kept in</th>" +
+                 "<th>Reorder at</th><th>Notes</th><th></th></tr>";
   inventory.forEach((it,i) => {
     const tr = document.createElement("tr");
     tr.innerHTML =
@@ -398,8 +553,11 @@ function drawInventory() {
         (it.name||"") + "'></td>" +
       "<td><input type='number' min='0' class='i_qty' data-i='" + i +
         "' value='" + (it.qty != null ? it.qty : 1) + "' style='width:70px'></td>" +
-      "<td><input type='text' class='i_cat' data-i='" + i + "' value='" +
-        (it.category||"") + "' style='width:110px'></td>" +
+      "<td><select class='i_room' data-i='" + i + "' style='width:110px'>" +
+        "<option value=''>— anywhere —</option>" + roomOpts + "</select></td>" +
+      "<td><input type='number' min='0' class='i_par' data-i='" + i +
+        "' value='" + (it.par != null ? it.par : 0) + "' style='width:70px' " +
+        "title='Flag as low when the count drops to this'></td>" +
       "<td><input type='text' class='i_note' data-i='" + i + "' value='" +
         (it.notes||"") + "'></td>" +
       "<td><button class='danger tiny i_del' data-i='" + i + "'>Remove</button></td>";
@@ -409,20 +567,26 @@ function drawInventory() {
     e.oninput = () => inventory[+e.dataset.i].name = e.value);
   tb.querySelectorAll(".i_qty").forEach(e =>
     e.oninput = () => inventory[+e.dataset.i].qty = parseInt(e.value,10) || 0);
-  tb.querySelectorAll(".i_cat").forEach(e =>
-    e.oninput = () => inventory[+e.dataset.i].category = e.value);
+  tb.querySelectorAll(".i_room").forEach(e => {
+    e.value = inventory[+e.dataset.i].room || "";
+    e.onchange = () => inventory[+e.dataset.i].room = e.value;
+  });
+  tb.querySelectorAll(".i_par").forEach(e =>
+    e.oninput = () => inventory[+e.dataset.i].par = parseInt(e.value,10) || 0);
   tb.querySelectorAll(".i_note").forEach(e =>
     e.oninput = () => inventory[+e.dataset.i].notes = e.value);
   tb.querySelectorAll(".i_del").forEach(e => e.onclick = () => {
     const it = inventory[+e.dataset.i];
     if (it.id) invDeleted.push(it.id);
     inventory.splice(+e.dataset.i,1);
-    drawInventory();
+    drawSkills();
+  drawInventory();
   });
 }
 
 $("invAdd").onclick = () => {
-  inventory.push({ name:"", qty:1, category:"", notes:"" });
+  inventory.push({ name:"", qty:1, room:"", par:0, notes:"" });
+  drawSkills();
   drawInventory();
 };
 
@@ -569,6 +733,7 @@ $("saveBtn").onclick = async () => {
   for (const it of inventory) {
     if (!(it.name||"").trim()) continue;
     const payload = { name: it.name.trim(), qty: it.qty || 0,
+                      room: (it.room||"").trim(), par: it.par || 0,
                       category: (it.category||"").trim(),
                       notes: (it.notes||"").trim() };
     if (it.id) await setDoc(doc(db,"inventory",it.id), payload);
@@ -580,6 +745,18 @@ $("saveBtn").onclick = async () => {
   }
   for (const id of invDeleted) await deleteDoc(doc(db,"inventory",id));
   invDeleted = [];
+
+  for (const k of skills) {
+    if (!(k.name||"").trim()) continue;
+    const payload = { name: k.name.trim(), kind: k.kind || "", mins: k.mins || 0,
+                      items: k.items || [], note: k.note || "" };
+    const id = k.id ||
+      k.name.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").slice(0,40);
+    await setDoc(doc(db,"skills",id), payload);
+    k.id = id;
+  }
+  for (const id of skDeleted) await deleteDoc(doc(db,"skills",id));
+  skDeleted = [];
 
   $("status").textContent = "Saved — the board is already showing it.";
   setTimeout(() => $("status").textContent = "", 4000);
