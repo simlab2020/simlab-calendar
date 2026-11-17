@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Import lab layout (run once)</title>
+<style>
+  body { font-family:"Segoe UI",system-ui,sans-serif; margin:0; padding:24px;
+         background:#f4f6f8; color:#102a43; }
+  h1 { font-size:21px; margin:0 0 6px; }
+  p  { max-width:680px; line-height:1.55; }
+  .warn { background:#fff4e5; border:1px solid #d98324; border-radius:8px;
+          padding:12px 14px; max-width:680px; }
+  button { padding:9px 15px; border:0; border-radius:5px; background:#1f3864;
+           color:#fff; font-weight:600; cursor:pointer; margin-right:8px; }
+  button.ghost { background:#fff; color:#1f3864; border:1px solid #1f3864; }
+  button:disabled { background:#8aa; cursor:default; }
+  label.opt { display:block; margin:6px 0; font-size:14px; }
+  table { border-collapse:collapse; background:#fff; margin-top:14px;
+          font-size:13px; max-width:820px; }
+  th,td { border:1px solid #c7d4e3; padding:5px 8px; text-align:left; }
+  th { background:#1f3864; color:#fff; }
+  td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .gain { color:#1f7a44; font-weight:600; }
+  .loss { color:#c0392b; font-weight:600; }
+  pre { background:#fff; border:1px solid #c7d4e3; border-radius:6px;
+        padding:12px; max-height:300px; overflow:auto; font-size:12px;
+        max-width:820px; }
+</style>
+</head>
+<body>
+
+<h1>Import lab layout into the calendar</h1>
+<p>
+  Reads <b>lab-layout.json</b> &mdash; the beds and tables traced in the 3D lab model &mdash;
+  and writes them into this calendar&rsquo;s rooms as stations. Also stores the building
+  outline so the floor view can draw the plan.
+</p>
+
+<div class="warn">
+  <b>This replaces each listed room&rsquo;s station list.</b> Any beds or tables you added
+  by hand in those rooms are overwritten by the ones from the model. Everything else
+  &mdash; room names, column order, bookings, inventory, notes &mdash; is untouched.
+  Run the preview first; it changes nothing.
+</div>
+
+<p>
+  <label class="opt"><input type="checkbox" id="optCap" checked>
+    Also set each room&rsquo;s capacity from the blueprint</label>
+  <label class="opt"><input type="checkbox" id="optPlan" checked>
+    Also store the building outline for the floor view</label>
+  <label class="opt"><input type="checkbox" id="optInv" checked>
+    Also bring across any supplies counted in the model
+    <span style="color:#5a5a5a">(added to your inventory, never removed from it)</span></label>
+</p>
+
+<p>
+  <button class="ghost" id="preview">Preview changes</button>
+  <button id="go" disabled>Sign in and import</button>
+</p>
+
+<div id="out"></div>
+<pre id="log" style="display:none"></pre>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, doc, getDocs, getDoc, updateDoc, setDoc,
+         writeBatch }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
+
+const app  = initializeApp(firebaseConfig);
+const db   = getFirestore(app);
+const auth = getAuth(app);
+const $ = id => document.getElementById(id);
+const log = m => { const p=$("log"); p.style.display="block";
+                   p.textContent += m + "\n"; p.scrollTop = p.scrollHeight; };
+
+let payload = null, current = {};
+
+$("preview").onclick = async () => {
+  try {
+    payload = await (await fetch("./lab-layout.json")).json();
+  } catch (e) {
+    $("out").innerHTML = "<p class='loss'>Could not read lab-layout.json — " +
+      "make sure it is uploaded next to this page.</p>";
+    return;
+  }
+  // Reading rooms needs no sign-in; the rules allow public read.
+  const snap = await getDocs(collection(db,"rooms"));
+  current = {};
+  snap.docs.forEach(d => current[d.id] = d.data());
+
+  const ids = Object.keys(payload.rooms).sort();
+  let missing = [];
+  let html = "<table><tr><th>Room</th><th>On the board</th>" +
+             "<th class='num'>Stations now</th><th class='num'>After import</th>" +
+             "<th>From the model</th></tr>";
+  for (const id of ids) {
+    const have = current[id];
+    if (!have) { missing.push(id); continue; }
+    const now = (have.stations || []).length;
+    const next = payload.rooms[id].stations.length;
+    const beds = payload.rooms[id].stations.filter(s => s.type === "bed").length;
+    html += "<tr><td>" + id + "</td><td>" + (have.label || "") + "</td>" +
+      "<td class='num'>" + now + "</td>" +
+      "<td class='num " + (next >= now ? "gain" : "loss") + "'>" + next + "</td>" +
+      "<td>" + payload.rooms[id].roomName + " — " + beds + " beds, " +
+      (next - beds) + " tables</td></tr>";
+  }
+  html += "</table>";
+  if (missing.length)
+    html += "<p class='loss'>No such room in this calendar: " + missing.join(", ") +
+            ". Those are skipped — check the room ids in settings.</p>";
+
+  const sup = payload.supplies || [];
+  html += "<p>" + (sup.length
+    ? sup.length + " supply item(s) counted in the model will be added to the " +
+      "inventory: " + sup.slice(0,8).map(s2 => s2.name).join(", ") +
+      (sup.length > 8 ? "…" : "")
+    : "No supplies have been counted in the model yet, so the inventory is " +
+      "left alone. You can count them later and run this again.") + "</p>";
+  $("out").innerHTML = html;
+  $("go").disabled = false;
+};
+
+$("go").onclick = async () => {
+  $("go").disabled = true;
+  try {
+    const email = prompt("Staff email:");
+    const pass  = prompt("Password:");
+    await signInWithEmailAndPassword(auth, email, pass);
+    log("Signed in as " + email);
+
+    const batch = writeBatch(db);
+    let n = 0;
+    for (const [id, data] of Object.entries(payload.rooms)) {
+      if (!current[id]) { log("skipped " + id + " — not in this calendar"); continue; }
+      const patch = { stations: data.stations, roomName: data.roomName,
+                      geom: data.geom };
+      if ($("optCap").checked && data.capacity) patch.capacity = data.capacity;
+      batch.update(doc(db,"rooms",id), patch);
+      n++;
+      log("queued " + id + "  (" + data.stations.length + " stations)");
+    }
+    await batch.commit();
+    log("Wrote " + n + " rooms.");
+
+    if ($("optPlan").checked) {
+      await setDoc(doc(db,"settings","floorplan"), payload.floorplan);
+      log("Stored the building outline (" + payload.floorplan.rooms.length + " rooms).");
+    }
+
+    // Supplies are merged, never cleared: an item already in the inventory
+    // keeps its own count and only gains a home room if it had none.
+    if ($("optInv").checked && (payload.supplies||[]).length) {
+      const have = {};
+      (await getDocs(collection(db,"inventory"))).docs
+        .forEach(d => have[d.id] = d.data());
+      for (const it of payload.supplies) {
+        const key = it.name.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").slice(0,40);
+        const old = have[key];
+        await setDoc(doc(db,"inventory",key), old
+          ? Object.assign({}, old, { room: old.room || it.room,
+                                     par: old.par || it.par })
+          : { name: it.name, qty: it.qty, par: it.par, room: it.room,
+              category: "", notes: "" });
+        log((old ? "updated " : "added ") + it.name);
+      }
+    }
+    log("Done. Open display.html, tap a room, then Room setup sheet.");
+    log("You can delete this page from the repo now.");
+  } catch (e) {
+    log("ERROR: " + e.message);
+    $("go").disabled = false;
+  }
+};
+</script>
+</body>
+</html>
