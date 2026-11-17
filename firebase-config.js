@@ -50,7 +50,14 @@ export const DEFAULT_SETTINGS = {
   multiWeeks: 8,           // how many weeks to show in multi layout
   multiCols: 3,            // panels across
   startOffset: 0,          // 0 = start at this week, -1 = last week, 2 = in two weeks
-  semesterStart: "2026-08-24",
+  // Monday each term starts. Week numbers restart at WK 1 for whichever
+  // term has most recently begun.
+  // Fall 2026 comes from your own master sheet (Week 1 = Aug 24). Spring 2027
+  // is the Monday its "Week 1 - Jan" block pointed at. Summer is a guess --
+  // set it in Settings once you know the real date.
+  springStart: "2027-01-18",
+  summerStart: "2027-06-07",
+  fallStart:   "2026-08-24",
   showNotes: true,
   notesTitle: "Notes & Ideas",
   notesHeightVh: 24,
@@ -64,6 +71,7 @@ export const DEFAULT_SETTINGS = {
   browseResetSec: 120,
   showNavButtons: true,
   showAdminButtons: true,
+  lowStockBanner: true,
   colors: COLORS,
   theme: {
     bg:      "#0d1b2a",
