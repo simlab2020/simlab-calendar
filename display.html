@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sim Lab - Week at a Glance</title>
-<meta name="build" content="2026-11-18-terms">
+<meta name="build" content="2026-11-18-fit">
 <style>
   :root { color-scheme:dark; --bg:#0d1b2a; --panel:#152c42; --line:#2c4257;
           --fg:#fff; --muted:#8fb3cc; --today:#17334d; --note:#ffd9a0;
@@ -440,7 +440,7 @@ const auth = getAuth(fbApp);
 let user = null;
 onAuthStateChanged(auth, u => { user = u; paintAuth(); });
 const DAYS = ["Mon","Tues","Wed","Thurs","Fri","Sat","Sun"];
-console.log("display.html build 2026-11-18-terms");
+console.log("display.html build 2026-11-18-fit");
 
 let rooms = [], bookings = [], notes = {}, offset = 0, rotating = true;
 let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
@@ -595,12 +595,20 @@ function dayComments(n) {
   return (n.text || "").trim() ? [{ text: n.text, color: "" }] : [];
 }
 
-// A banner decoration: an emoji typed straight in, or an image URL.
+// A banner decoration: an emoji typed straight in, or an image.
+// A bare "turkey.png" counts as an image. It did not before, which made the
+// placeholder in Settings a lie: the file name came out as text.
+// A file that will not load hides itself rather than leaving a broken icon
+// across the middle of a wall display.
 function bannerArt(icon) {
-  if (!icon) return "";
-  return /^https?:\/\/|^\.?\//.test(icon)
-    ? "<img class='bannerimg' src='" + esc(icon) + "' alt=''>"
-    : "<span class='bannericon'>" + esc(icon) + "</span>";
+  const t = String(icon || "").trim();
+  if (!t) return "";
+  const isImage = /^https?:\/\//i.test(t) || /^\.{0,2}\//.test(t) ||
+                  /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)(\?.*)?$/i.test(t);
+  return isImage
+    ? "<img class='bannerimg' src='" + esc(t) +
+      "' alt='' onerror=\"this.style.display='none'\">"
+    : "<span class='bannericon'>" + esc(t) + "</span>";
 }
 
 function weekLabel(off) {
@@ -639,14 +647,20 @@ function weekTableHTML(weekStart, opts) {
 
   for (let i = 0; i < nDays; i++) {
     const d = addDays(weekStart,i), key = iso(d), note = notes[key] || {};
-    const rowBg = (key === today) ? themeColor("today") : themeColor("bg");
+    let rowBg = (key === today) ? themeColor("today") : themeColor("bg");
+    // A banner can carry a colour of its own, across the whole row.
+    const banBg = note.banner && note.bannerColor
+      ? (colors[note.bannerColor] || "") : "";
+    if (banBg) rowBg = banBg;
     const rowInk = contrastOn(rowBg);
     html += "<tr class='" + (key === today ? "today" : "") + "'>";
-    html += "<td class='day clickable' data-date='" + key + "'>" + DAYS[i] +
-            "<br>" + (d.getMonth()+1) + "/" + d.getDate() + "</td>";
+    html += "<td class='day clickable' data-date='" + key + "'" +
+            (banBg ? " style='background:" + banBg + ";color:" + rowInk + "'" : "") +
+            ">" + DAYS[i] + "<br>" + (d.getMonth()+1) + "/" + d.getDate() + "</td>";
     if (note.banner) {
       html += "<td colspan='" + rooms.length + "' class='banner' style='color:" +
-              rowInk + "'>" + bannerArt(note.icon) + esc(note.banner) +
+              rowInk + (banBg ? ";background:" + banBg : "") + "'>" +
+              bannerArt(note.icon) + esc(note.banner) +
               bannerArt(note.icon) + "</td>";
     } else {
       rooms.forEach((r,ri) => {
@@ -668,8 +682,10 @@ function weekTableHTML(weekStart, opts) {
     }
     if (settings.showComments !== false) {
       const cs = dayComments(note);
+      // The comments cell sits on the same row, so it takes the colour too.
       html += "<td class='notes clickable' data-note='" + key + "' style='color:" +
-        rowInk + "'>" + (cs.length ? cs.map(c => {
+        rowInk + (banBg ? ";background:" + banBg : "") + "'>" +
+        (cs.length ? cs.map(c => {
           const bg = c.color ? colors[c.color] : "";
           return bg
             ? "<span class='cmt' style='background:" + bg + ";color:" +
@@ -739,6 +755,67 @@ function renderSingle() {
     p.textContent = "Nothing scheduled this week yet.";
     host.appendChild(p);
   }
+  fitText(host);
+}
+
+/* ---- making long names fit their column ---------------------------
+   A course like "Fundamentals" is one word wider than a room column, so it
+   used to spill past the cell and get cut off mid-word. Each label is now
+   shrunk just enough to sit inside its own cell. Measuring is done for the
+   whole board at once and the new sizes written at once, so the browser
+   lays the board out a handful of times rather than once per chip.
+   Nothing is shrunk past FIT_MIN of its set size -- past that point it
+   would be unreadable from the floor, so the word is allowed to break
+   instead. */
+const FIT_MIN = 0.65;
+const FIT_SEL = ".chip, .banner, th, td.day, td.notes";
+
+function fitText(root) {
+  if (!root) return;
+  const els = Array.prototype.slice.call(root.querySelectorAll(FIT_SEL));
+  if (!els.length) return;
+  els.forEach(el => {
+    el.style.fontSize = "";
+    el.style.overflowWrap = "";
+    delete el.dataset.fitBase;
+  });
+  for (let round = 0; round < 4; round++) {
+    // Read everything first.
+    const work = [];
+    els.forEach(el => {
+      const room = el.clientWidth;
+      if (!room) return;
+      if (el.scrollWidth <= room + 1) return;
+      work.push({ el, ratio: room / el.scrollWidth,
+                  now: parseFloat(getComputedStyle(el).fontSize) || 0 });
+    });
+    if (!work.length) return;
+    // Then write everything.
+    let changed = false;
+    work.forEach(w => {
+      if (!w.now) return;
+      const base = parseFloat(w.el.dataset.fitBase || "") || w.now;
+      w.el.dataset.fitBase = base;
+      const floor = base * FIT_MIN;
+      const want  = Math.max(floor, w.now * w.ratio * 0.97);
+      if (want < w.now - 0.1) { w.el.style.fontSize = want.toFixed(2) + "px";
+                                changed = true; }
+      else { w.el.style.overflowWrap = "anywhere"; }
+    });
+    if (!changed) return;
+  }
+}
+
+/* The board is sized in vw, so a window change resizes every cell. */
+let fitTimer = 0;
+addEventListener("resize", () => {
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(() => fitText(document.getElementById("board")), 150);
+});
+/* First paint can happen before the webfont arrives, which would make
+   every measurement a little narrow. */
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => fitText(document.getElementById("board")));
 }
 
 function renderMulti() {
@@ -769,6 +846,7 @@ function renderMulti() {
             weekTableHTML(ws, {compact:true}) + "</section>";
   }
   host.innerHTML = html + "</div>";
+  fitText(host);
 }
 
 // Which semester a week belongs to, and its number within that semester.
@@ -1615,11 +1693,24 @@ function dayNoteForm(key) {
     "<p><button class='btn ghost small' id='cmt_add'>+ Add another comment" +
       "</button></p>" +
     "<label>Full-width banner — leave blank for a normal day</label>" +
-    "<input id='dn_banner' value='" + esc(n.banner||"") +
-      "' placeholder='THANKSGIVING DAY'>" +
+    "<div class='two' style='grid-template-columns:1fr 150px'>" +
+      "<div><input id='dn_banner' value='" + esc(n.banner||"") +
+        "' placeholder='THANKSGIVING DAY'></div>" +
+      "<div><select id='dn_bcolor'>" +
+        "<option value=''" + (n.bannerColor ? "" : " selected") +
+          ">row colour</option>" +
+        Object.keys(colors).map(k => "<option value='" + esc(k) + "'" +
+          (k === n.bannerColor ? " selected" : "") + ">" + esc(k) +
+          "</option>").join("") +
+      "</select></div>" +
+    "</div>" +
     "<label>Banner decoration — an emoji, or an image file in the repo</label>" +
     "<input id='dn_icon' value='" + esc(n.icon||"") +
       "' placeholder='&#127790;  or  turkey.png'>" +
+    "<p class='hint' style='margin:4px 0 0;font-size:12px;color:#8fb3cc'>" +
+      "A picture has to be in the repo next to display.html, and the name has " +
+      "to match exactly &mdash; turkey.PNG and turkey.png are different files " +
+      "on GitHub Pages. It shows either side of the words.</p>" +
     "<p style='margin-top:16px'>" +
       "<button class='btn' id='dn_save'>Save</button>" +
       "<button class='btn ghost' id='dn_cancel'>Cancel</button>" +
@@ -1644,6 +1735,7 @@ function dayNoteForm(key) {
     // the old single-comment field keeps working.
     const rec = { date: key, items: keep, text: keep.map(c => c.text).join(" \u00b7 "),
                   banner: v("dn_banner"), icon: v("dn_icon"),
+                  bannerColor: document.getElementById("dn_bcolor").value,
                   updatedBy: user.email };
     await setDoc(doc(db,"dayNotes",key), rec);
     notes[key] = rec;
@@ -2289,13 +2381,15 @@ document.getElementById("who").onclick = () => {
 
 /* ---------- rotation, clock, watchdog ---------- */
 setInterval(() => {
-  // Hand control back after a couple of minutes so the wall always
-  // ends up showing the current week again.
   // Nothing moves the board while a popup is open: someone is reading it, or
   // worse, typing into it. The countdown restarts when they close it.
   const busy = overlay.classList.contains("on");
   if (busy) { browseAt = Date.now(); lastFlip = Date.now(); return; }
-  if (browseShift && Date.now() - browseAt > (settings.browseResetSec || 120) * 1000)
+  // Once somebody has paged to a week, the board stays on it. It only goes
+  // back when they tap Today, or when a number of seconds is set in Settings
+  // -- which is what the wall display wants and a desk does not.
+  const back = settings.browseResetSec;
+  if (browseShift && back > 0 && Date.now() - browseAt > back * 1000)
     browse(0);
   if (!rotating || browseShift) return;
   if (settings.layout === "multi") return;   // nothing to rotate in wall mode
