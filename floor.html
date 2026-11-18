@@ -294,6 +294,7 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
 import { firebaseConfig, COLORS as FALLBACK_COLORS, DEFAULT_SETTINGS }
   from "./firebase-config.js";
 import { buildList, score } from "./checklist.js";
+import { buildModelWorld } from "./model3d.js";
 
 const fbApp = initializeApp(firebaseConfig);
 let db;
@@ -688,6 +689,9 @@ function side() {
 // coloured live by the day's bookings. Map stays SVG because it prints.
 const S3 = 1/32, WALL_H = 2.7, WALL_T = 0.14;
 let mode = "map", showBookings = true, showProps = true;
+// Wall boxes and free-standing wall lines, used for bumping into things on
+// the walk-through.
+let wallBoxes = [], wallSegs = [];
 let scene, cam3, camW, renderer, raf = null, world3 = null, picks = [], labels3 = [];
 let ceilings = [];
 let orbit = { yaw: -0.9, pitch: 0.62, dist: 60, cx: 0, cz: 0, framed: false,
@@ -883,7 +887,6 @@ function buildWorld() {
   if (world3) { scene.remove(world3); }
   world3 = new THREE.Group();
   picks = []; labels3 = []; ceilings = [];
-  const U = plan.unit || 32, T = plan.types || {}, OFF = plan.typeOff || {};
   const B = plan.bounds;
   // Only centre on the building the first time. After that the view stays
   // wherever it was panned to.
@@ -898,99 +901,85 @@ function buildWorld() {
     orbit.framed = true;
   }
 
-  // one floor slab for the whole building
-  const fw = (B.x2 - B.x1) * S3 + 6, fd = (B.y2 - B.y1) * S3 + 6;
-  const slab = box(fw, 0.12, fd, 0xdde2e8);
-  slab.position.set(((B.x1 + B.x2) / 2) * S3, -0.06, ((B.y1 + B.y2) / 2) * S3);
-  world3.add(slab);
-
-  // Worked out once for the whole floor, not per room: a door belongs to the
-  // wall it sits in, and that wall may be shared by the room next door.
-  const opens = allOpenings();
-
+  // Everything structural -- floors, walls, doors, signs, furniture, the
+  // model's own labels -- is built by model3d.js, which is a port of the
+  // model's own drawing code. Anything the board adds on top of that (booking
+  // colours, the per-column room names) is layered on afterwards.
+  const tintOf = {};
+  const colOf = {};
   for (const pr of plan.rooms) {
-    const x0 = pr.x1 * S3, z0 = pr.y1 * S3;
-    const w = (pr.x2 - pr.x1) * S3, d = (pr.y2 - pr.y1) * S3;
-
-    // which board columns live in this footprint
     const mine = rooms.filter(r => r.active !== false && r.geom &&
       r.geom.x1 === pr.x1 && r.geom.y1 === pr.y1 &&
       r.geom.x2 === pr.x2 && r.geom.y2 === pr.y2)
       .sort((a, b) => (a.order || 0) - (b.order || 0));
+    colOf[pr.id] = mine;
+    mine.forEach(r => Object.assign(tintOf, stationUse(r.id)));
+  }
 
-    const n = Math.max(1, mine.length), cw = w / n;
+  const built = buildModelWorld(THREE, world3, plan, {
+    showProps,
+    // A bed or table in use takes the colour of whatever is booked on it.
+    tintFor: p => {
+      if (!showBookings) return null;
+      const a = tintOf[p.id];
+      return a ? (colors[a.color] || "#4a8f4e") : null;
+    },
+    roomLabelFor: id => {
+      const mine = colOf[id] || [];
+      const r = mine[0];
+      const st = r && showBookings ? roomState(r) : null;
+      const plain = !st || !st.fill || st.fill === "#13243a";
+      return { label: r ? (r.label || id) : id,
+               name: (r && r.roomName) || "",
+               // The board draws its own name per column just below, so the
+               // model's own tag is only wanted for rooms the board has no
+               // column for.
+               tag: mine.length ? "" : id,
+               tagColor: null,
+               // The model tints the floor itself; the board feeds it the
+               // booking colour so a used room reads at a glance.
+               floor: plain ? null : tintFloor(st.fill, 0.3) };
+    }
+  });
+  picks = built.picks;
+  labels3 = built.labels;
+  ceilings = built.ceilings;
+  wallBoxes = built.walls;
+  wallSegs = built.wsegs;
+
+  // The board's own room names, one per column, since a single room in the
+  // model can be two columns on the board (126 A and B).
+  for (const pr of plan.rooms) {
+    const mine = colOf[pr.id] || [];
+    if (!mine.length) continue;
+    const x0 = pr.x1 * S3, z0 = pr.y1 * S3;
+    const w = (pr.x2 - pr.x1) * S3, d = (pr.y2 - pr.y1) * S3;
+    const n = mine.length, cw = w / n;
     for (let i = 0; i < n; i++) {
-      const r = mine[i] || null;
-      const st = r ? roomState(r) : { fill: "#13243a" };
-      const plain = !showBookings || !st.fill || st.fill === "#13243a";
-      const f = box(cw - 0.06, 0.08, d - 0.06,
-                    plain ? (r ? FLOOR_C : 0xe4e7ec) : tintFloor(st.fill));
-      f.position.set(x0 + cw * i + cw / 2, 0.04, z0 + d / 2);
-      f.userData = { roomId: r ? r.id : null };
-      world3.add(f);
-      if (r) picks.push(f);
-      const label = tag(r ? (r.label || pr.id) : pr.id,
-                        r ? "#14202c" : "#6b7686");
+      const r = mine[i];
+      const label = tag(r.label || r.id, "#14202c");
       label.position.set(x0 + cw * i + cw / 2, 2.35, z0 + d / 2);
-      label.userData = { roomId: r ? r.id : null };
-      label.visible = mode !== "walk";      // they hang through walls otherwise
+      label.userData = { roomId: r.id };
+      label.visible = mode !== "walk";    // they hang through walls otherwise
       labels3.push(label);
       world3.add(label);
-      if (r) picks.push(label);
-    }
-
-    // A ceiling, so walking reads as being inside a room rather than in a
-    // roofless box. Hidden in the other modes, which need to see in.
-    const cap3 = box(w - 0.06, 0.1, d - 0.06, CEIL_C);
-    cap3.position.set(x0 + w / 2, WALL_H + 0.05, z0 + d / 2);
-    cap3.visible = false;
-    ceilings.push(cap3);
-    world3.add(cap3);
-
-    // All four sides, each cut back by whatever openings cross it.
-    const ws = [];
-    wallLine("x", z0,     x0, x0 + w, opens, ws);
-    wallLine("x", z0 + d, x0, x0 + w, opens, ws);
-    wallLine("z", x0,     z0, z0 + d, opens, ws);
-    wallLine("z", x0 + w, z0, z0 + d, opens, ws);
-    ws.forEach(m => world3.add(m));
-
-    // furniture
-    const use = r0 => { const u = {}; (mine||[]).forEach(r => Object.assign(u, stationUse(r.id))); return u; };
-    const assigned = use();
-    for (const p of (pr.props || [])) {
-      const spec = T[p.t] || { w: 0.6, h: 0.6, l: 0.6, c: 0x7a8794 };
-      const sc = p.s || 1;
-      const bw = (p.mw || spec.w) * sc, bh = (p.mh || spec.h) * sc,
-            bl = (p.ml || spec.l) * sc;
-      const a = assigned[p.id];
-      const col = (a && showBookings)
-        ? new THREE.Color(colors[a.color] || "#4a8f4e").getHex() : spec.c;
-      const m = box(bw, bh, bl, col);
-      const lift = (p.elev != null ? p.elev : (OFF[p.t] || 0));
-      m.position.set(x0 + p.x, lift + bh / 2 + 0.08, z0 + p.z);
-      m.rotation.y = -(p.r || 0) * Math.PI / 180;
-      m.userData = { stationId: p.id, roomFoot: pr.id };
-      world3.add(m);
-      picks.push(m);
+      picks.push(label);
+      // A split room needs a pickable patch per column; a whole one is
+      // already covered by the floor the model drew.
+      if (n > 1) {
+        const hit = box(cw - 0.06, 0.02, d - 0.06, 0xffffff);
+        hit.material.transparent = true;
+        hit.material.opacity = 0;
+        hit.material.depthWrite = false;
+        hit.position.set(x0 + cw * i + cw / 2, 0.05, z0 + d / 2);
+        hit.userData = { roomId: r.id };
+        world3.add(hit);
+        picks.push(hit);
+      }
     }
   }
 
-  // walls the model added by hand
-  // Labels written on the floor in the model.
-  (plan.labels || []).forEach(fl => {
-    if (!fl || !fl.text) return;
-    const t = tag(fl.text, fl.color || "#334155");
-    t.position.set(fl.x, 0.1, fl.z);
-    labels3.push(t);
-    world3.add(t);
-  });
-
-  (plan.walls || []).forEach(w => {
-    const ws = [];
-    wallWithDoors(w.x1, w.z1, w.x2, w.z2, w.doors, 0xaeb6bf, ws);
-    ws.forEach(m => world3.add(m));
-  });
+  const fw = (B.x2 - B.x1) * S3 + 6, fd = (B.y2 - B.y1) * S3 + 6;
 
   // a grid on the floor so walking reads as movement
   if (!world3.getObjectByName("grid")) {
@@ -1060,6 +1049,19 @@ function whereAmI() {
                           : (r.roomName || "") };
 }
 
+// How far a point is from a line segment -- for the free-standing walls,
+// which can sit at any angle.
+function segDist(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az;
+  const l = dx * dx + dz * dz || 1e-9;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / l));
+  return Math.hypot(px - ax - t * dx, pz - az - t * dz);
+}
+const free = (x, z) =>
+  !wallBoxes.some(w => x > w[0] - 0.28 && x < w[1] + 0.28 &&
+                       z > w[2] - 0.28 && z < w[3] + 0.28) &&
+  !wallSegs.some(q => segDist(x, z, q[0], q[1], q[2], q[3]) < 0.35);
+
 let whereTick = 0, lastT = 0;
 function loop(t) {
   raf = requestAnimationFrame(loop);
@@ -1083,10 +1085,15 @@ function loop(t) {
     if (held.up)   walk.pitch = Math.min(1.1, walk.pitch + turn * 0.6);
     if (held.down) walk.pitch = Math.max(-1.1, walk.pitch - turn * 0.6);
     const fx = Math.sin(walk.yaw), fz = Math.cos(walk.yaw);
-    if (held.f) { walk.x -= fx * sp; walk.z -= fz * sp; }
-    if (held.b) { walk.x += fx * sp; walk.z += fz * sp; }
-    if (held.l) { walk.x -= fz * sp; walk.z += fx * sp; }
-    if (held.r) { walk.x += fz * sp; walk.z -= fx * sp; }
+    // Walk into a wall and you stop, like in the model. Each axis is tested
+    // on its own, so brushing a wall slides along it instead of sticking.
+    let dx = 0, dz = 0;
+    if (held.f) { dx -= fx * sp; dz -= fz * sp; }
+    if (held.b) { dx += fx * sp; dz += fz * sp; }
+    if (held.l) { dx -= fz * sp; dz += fx * sp; }
+    if (held.r) { dx += fz * sp; dz -= fx * sp; }
+    if (dx && free(walk.x + dx, walk.z)) walk.x += dx;
+    if (dz && free(walk.x, walk.z + dz)) walk.z += dz;
   } else if (mode === "3d") {
     // The keyboard does the same jobs as the mouse: arrows slide the view,
     // Q and E swing it round, W and S move in and out.
