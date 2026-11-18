@@ -86,7 +86,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, signInWithEmailAndPassword }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, collection, doc, getDocs, getDoc, updateDoc, setDoc,
-         writeBatch }
+         writeBatch, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 
@@ -97,7 +97,7 @@ const $ = id => document.getElementById(id);
 const log = m => { const p=$("log"); p.style.display="block";
                    p.textContent += m + "\n"; p.scrollTop = p.scrollHeight; };
 
-let payload = null, current = {};
+let payload = null, current = {}, rawModel = null;
 
 /* ---------------------------------------------------------------------------
    Turn the model's own save file into what this page writes.
@@ -211,6 +211,7 @@ $("usePaste").onclick = async () => {
   try {
     const D = JSON.parse(raw);
     payload = fromModel(D, base);
+    rawModel = raw;
     const nRooms = Object.keys(payload.rooms).length;
     const nProps = payload.floorplan.rooms
       .reduce((n, r) => n + (r.props || []).length, 0);
@@ -332,6 +333,16 @@ $("go").onclick = async () => {
 
     if ($("optPlan").checked) {
       await setDoc(doc(db,"settings","floorplan"), payload.floorplan);
+      // Keep the model's own file as well, exactly as it came out of the
+      // model, so the 3D page can show the real building rather than a
+      // rebuilt copy of it.
+      if (rawModel) {
+        await setDoc(doc(db,"settings","lab"),
+          { json: rawModel, savedAt: serverTimestamp(),
+            savedBy: auth.currentUser ? auth.currentUser.email : "" });
+        log("Stored the lab itself for the 3D view (" +
+            Math.round(rawModel.length / 1024) + " KB).");
+      }
       log("Stored the building outline (" + payload.floorplan.rooms.length + " rooms).");
     }
 
