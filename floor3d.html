@@ -1208,7 +1208,9 @@ window.__board = {
   <a href="./settings.html">Settings</a>
   <span id="bstat">connecting&hellip;</span>
   <span class="grow"></span>
-  <button id="bsave" title="Store this lab on the board for everyone">
+  <button id="bpaste" title="Paste the lab you copied out of the model">
+    Paste lab from model</button>
+  <button id="bsave" title="Store the lab now on screen for everyone">
     Save lab to board</button>
 </div>
 <script type="module">
@@ -1244,7 +1246,11 @@ onAuthStateChanged(auth, u => { user = u; });
    one person's browser. Without one, the model falls back to its own built
    -in copy, exactly as it does on its own. */
 onSnapshot(doc(db, "settings", "lab"), snap => {
-  if (!snap.exists()) { say("using the model's built-in lab"); return; }
+  if (!snap.exists()) {
+    say("showing the file\u2019s built-in lab \u2014 press " +
+        "\u201cPaste lab from model\u201d to load yours", true);
+    return;
+  }
   const raw = (snap.data() || {}).json;
   if (!raw || raw === lastLab) return;
   lastLab = raw;
@@ -1415,32 +1421,66 @@ let geomIndex = {};
 window.__board.afterPanel(dressPanel);
 
 /* ---- saving the lab back ------------------------------------------ */
-$("bsave").onclick = async () => {
+/* Store a lab for everyone. Used both by the paste button and by Save.
+   Signing in is asked for once, only when something is actually being
+   written. */
+async function saveLab(json, note) {
   if (!user) {
     const em = prompt("Staff email");
-    if (!em) return;
+    if (!em) return false;
     const pw = prompt("Password");
-    if (pw == null) return;
+    if (pw == null) return false;
     try { await signInWithEmailAndPassword(auth, em, pw); }
-    catch (e) { alert("Could not sign in — " + e.message); return; }
+    catch (e) { alert("Could not sign in — " + e.message); return false; }
   }
-  const json = window.__board.getJSON();
   if (json.length > 900000) {
     alert("This lab is too big to store (" + Math.round(json.length / 1024) +
           " KB). Tell Phillip.");
-    return;
+    return false;
   }
   try {
     await setDoc(doc(db, "settings", "lab"),
       { json, savedAt: serverTimestamp(),
         savedBy: (auth.currentUser || {}).email || "" });
     lastLab = json;
-    window.__board.toast("Lab saved to the board");
+    window.__board.toast(note || "Lab saved to the board");
     say("lab saved just now");
+    return true;
   } catch (e) {
     alert("Could not save — " + e.message);
+    return false;
   }
+}
+
+/* The model's own Customize → Data → Copy data puts the whole lab on
+   the clipboard. This takes it from there, shows it, and stores it for
+   everyone, so nobody has to go through the import page just to put the
+   right building on screen. */
+$("bpaste").onclick = async () => {
+  let text = "";
+  try { text = await navigator.clipboard.readText(); } catch (e) {}
+  if (!text || text.trim()[0] !== "{") {
+    text = prompt("In the lab model press Customize, then Data → " +
+                  "Copy data. Paste it here:") || "";
+  }
+  text = text.trim();
+  if (!text) return;
+  let nd;
+  try { nd = JSON.parse(text); }
+  catch (e) { alert("That did not read as a lab. Copy all of it and try again."); return; }
+  if (!window.__board.loadLab(nd)) {
+    alert("That is not a lab — there are no rooms in it.");
+    return;
+  }
+  const n = (nd.rooms || []).length;
+  say("loaded " + n + " rooms from the model");
+  paint();
+  if (await saveLab(JSON.stringify(nd),
+        "Loaded " + n + " rooms and saved them to the board"))
+    recolour();
 };
+
+$("bsave").onclick = () => saveLab(window.__board.getJSON());
 </script>
 </body></html>
 
