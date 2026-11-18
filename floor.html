@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sim Lab - Floor View</title>
-<meta name="build" content="2026-11-18-terms">
+<meta name="build" content="2026-11-19-walls">
 <style>
   :root { color-scheme:dark; --bg:#0d1b2a; --panel:#152c42; --line:#2c4257;
           --fg:#fff; --muted:#8fb3cc; --note:#ffd9a0; }
@@ -686,11 +686,25 @@ function side() {
 /* ================= 3D and walk-through ================= */
 // Rooms, walls and furniture built from the same floorplan the 2D map uses,
 // coloured live by the day's bookings. Map stays SVG because it prints.
-const S3 = 1/32, WALL_H = 2.7, WALL_T = 0.11;
+const S3 = 1/32, WALL_H = 2.7, WALL_T = 0.14;
 let mode = "map", showBookings = true, showProps = true;
 let scene, cam3, camW, renderer, raf = null, world3 = null, picks = [], labels3 = [];
 let ceilings = [];
-let orbit = { yaw: -0.9, pitch: 0.62, dist: 60, cx: 0, cz: 0, framed: false };
+let orbit = { yaw: -0.9, pitch: 0.62, dist: 60, cx: 0, cz: 0, framed: false,
+              home: null };
+
+/* Move what the 3D view is looking at, by a drag in screen pixels.
+
+   The camera sits out at `dist` on the compass bearing `yaw`, so screen-right
+   and screen-up have to be worked out from that bearing rather than being
+   fixed. Scaling by `dist` is what makes a drag cover the same amount of
+   screen whether you are up at the ceiling or down among the beds. */
+function panOrbit(dx, dy) {
+  const k = orbit.dist * 0.0017;
+  const c = Math.cos(orbit.yaw), sn = Math.sin(orbit.yaw);
+  orbit.cx += k * (-dx * sn - dy * c);
+  orbit.cz += k * ( dx * c  - dy * sn);
+}
 let walk  = { x: 0, z: 0, yaw: 0, pitch: 0, h: 1.62, placed: false };
 const held = {};
 
@@ -794,10 +808,69 @@ function wallWithDoors(x1, z1, x2, z2, doors, col, out) {
   if (at < len) { const w = wallSeg(x1 + ux*at, z1 + uz*at, x2, z2, col); if (w) out.push(w); }
 }
 
-// Does a removed-wall "cut" cover this segment?
-function cutCovers(cuts, ax, fix, a, b) {
-  return (cuts || []).some(c => c.ax === ax && Math.abs(c.fix - fix) < 0.35 &&
-    a >= c.a - 0.35 && b <= c.b + 0.35);
+/* ---------------------------------------------------------------------------
+   Walls, built the way the model builds them.
+
+   An "opening" is a stretch of wall that is not there: a doorway, or a length
+   somebody deleted in the model. Each one is { ax, fix, a, b } -- the axis the
+   wall runs along, where the other axis fixes it, and the span removed.
+
+   Two things here matter, and both were wrong before:
+
+   * An opening takes a bite out of a wall and leaves the rest standing. The
+     old code only dropped a wall when an opening swallowed it whole, so a
+     room with a doorway came out sealed -- a closet with no way in.
+   * An opening is matched by where it is, not by whose room it belongs to.
+     Two rooms back to back share one wall, so a door in one opens it for both.
+--------------------------------------------------------------------------- */
+
+// Where a door in a room's wall sits, in world metres.
+function doorOpening(pr, d) {
+  const x0 = pr.x1 * S3, z0 = pr.y1 * S3;
+  const w = (pr.x2 - pr.x1) * S3, h = (pr.y2 - pr.y1) * S3;
+  const alongX = d.side === "n" || d.side === "s";
+  const L = alongX ? w : h;
+  if (!(L > 0)) return null;
+  const dw = Math.min(d.w || 1.2, Math.max(0.3, L - 0.1));
+  const c = Math.max(0, Math.min(1, d.t == null ? 0.5 : d.t)) * L;
+  const st = d.side === "n" ? [x0, z0] : d.side === "s" ? [x0, z0 + h]
+           : d.side === "w" ? [x0, z0] : d.side === "e" ? [x0 + w, z0] : null;
+  if (!st) return null;
+  const u = alongX ? [1, 0] : [0, 1];
+  const at = alongX ? st[0] + u[0] * c : st[1] + u[1] * c;
+  return { ax: alongX ? "x" : "z", fix: alongX ? st[1] : st[0],
+           a: at - dw / 2, b: at + dw / 2 };
+}
+
+// Every opening on the floor: doors first, then the lengths removed outright.
+function allOpenings() {
+  const out = [];
+  (plan.rooms || []).forEach(pr => (pr.doors || []).forEach(d => {
+    const o = doorOpening(pr, d);
+    if (o) out.push(o);
+  }));
+  (plan.cuts || []).forEach(c => out.push(c));
+  return out;
+}
+
+// One side of a room, cut into the pieces that are actually there.
+function wallLine(ax, fix, a, b, opens, out) {
+  let sg = [[a, b]];
+  for (const o of opens) {
+    if (o.ax !== ax || Math.abs(o.fix - fix) > 0.35) continue;
+    sg = sg.flatMap(([p, q]) => {
+      if (o.b <= p || o.a >= q) return [[p, q]];
+      const r = [];
+      if (o.a > p) r.push([p, o.a]);
+      if (o.b < q) r.push([o.b, q]);
+      return r;
+    });
+  }
+  for (const [p, q] of sg) {
+    if (q - p < 0.05) continue;
+    const m = ax === "x" ? wallSeg(p, fix, q, fix) : wallSeg(fix, p, fix, q);
+    if (m) { m.userData.roomWall = [ax, fix, p, q]; out.push(m); }
+  }
 }
 
 const planHasProps = () => !!(plan && (plan.rooms||[]).some(r => (r.props||[]).length));
@@ -812,8 +885,12 @@ function buildWorld() {
   picks = []; labels3 = []; ceilings = [];
   const U = plan.unit || 32, T = plan.types || {}, OFF = plan.typeOff || {};
   const B = plan.bounds;
-  orbit.cx = ((B.x1 + B.x2) / 2) * S3;
-  orbit.cz = ((B.y1 + B.y2) / 2) * S3;
+  // Only centre on the building the first time. After that the view stays
+  // wherever it was panned to.
+  if (!orbit.framed) {
+    orbit.cx = ((B.x1 + B.x2) / 2) * S3;
+    orbit.cz = ((B.y1 + B.y2) / 2) * S3;
+  }
   if (!orbit.framed) {
     // Fit the whole building in view the first time, rather than guessing.
     const bw = (B.x2 - B.x1) * S3, bd = (B.y2 - B.y1) * S3;
@@ -824,8 +901,12 @@ function buildWorld() {
   // one floor slab for the whole building
   const fw = (B.x2 - B.x1) * S3 + 6, fd = (B.y2 - B.y1) * S3 + 6;
   const slab = box(fw, 0.12, fd, 0xdde2e8);
-  slab.position.set(orbit.cx, -0.06, orbit.cz);
+  slab.position.set(((B.x1 + B.x2) / 2) * S3, -0.06, ((B.y1 + B.y2) / 2) * S3);
   world3.add(slab);
+
+  // Worked out once for the whole floor, not per room: a door belongs to the
+  // wall it sits in, and that wall may be shared by the room next door.
+  const opens = allOpenings();
 
   for (const pr of plan.rooms) {
     const x0 = pr.x1 * S3, z0 = pr.y1 * S3;
@@ -866,17 +947,12 @@ function buildWorld() {
     ceilings.push(cap3);
     world3.add(cap3);
 
-    // perimeter, with doorways cut out and removed walls honoured
+    // All four sides, each cut back by whatever openings cross it.
     const ws = [];
-    const doorsOn = side => (pr.doors || []).filter(dd => dd.side === side);
-    if (!cutCovers(plan.cuts, "z", z0, x0, x0 + w))
-      wallWithDoors(x0, z0, x0 + w, z0, doorsOn("n"), null, ws);
-    if (!cutCovers(plan.cuts, "z", z0 + d, x0, x0 + w))
-      wallWithDoors(x0, z0 + d, x0 + w, z0 + d, doorsOn("s"), null, ws);
-    if (!cutCovers(plan.cuts, "x", x0, z0, z0 + d))
-      wallWithDoors(x0, z0, x0, z0 + d, doorsOn("w"), null, ws);
-    if (!cutCovers(plan.cuts, "x", x0 + w, z0, z0 + d))
-      wallWithDoors(x0 + w, z0, x0 + w, z0 + d, doorsOn("e"), null, ws);
+    wallLine("x", z0,     x0, x0 + w, opens, ws);
+    wallLine("x", z0 + d, x0, x0 + w, opens, ws);
+    wallLine("z", x0,     z0, z0 + d, opens, ws);
+    wallLine("z", x0 + w, z0, z0 + d, opens, ws);
     ws.forEach(m => world3.add(m));
 
     // furniture
@@ -901,6 +977,15 @@ function buildWorld() {
   }
 
   // walls the model added by hand
+  // Labels written on the floor in the model.
+  (plan.labels || []).forEach(fl => {
+    if (!fl || !fl.text) return;
+    const t = tag(fl.text, fl.color || "#334155");
+    t.position.set(fl.x, 0.1, fl.z);
+    labels3.push(t);
+    world3.add(t);
+  });
+
   (plan.walls || []).forEach(w => {
     const ws = [];
     wallWithDoors(w.x1, w.z1, w.x2, w.z2, w.doors, 0xaeb6bf, ws);
@@ -912,7 +997,7 @@ function buildWorld() {
     const grid = new THREE.GridHelper(Math.max(fw, fd), Math.round(Math.max(fw, fd)),
                                       0xc8ced6, 0xd8dde3);
     grid.name = "grid";
-    grid.position.set(orbit.cx, 0.02, orbit.cz);
+    grid.position.set(((B.x1 + B.x2) / 2) * S3, 0.02, ((B.y1 + B.y2) / 2) * S3);
     world3.add(grid);
   }
 
@@ -1002,18 +1087,64 @@ function loop(t) {
     if (held.b) { walk.x += fx * sp; walk.z += fz * sp; }
     if (held.l) { walk.x -= fz * sp; walk.z += fx * sp; }
     if (held.r) { walk.x += fz * sp; walk.z -= fx * sp; }
+  } else if (mode === "3d") {
+    // The keyboard does the same jobs as the mouse: arrows slide the view,
+    // Q and E swing it round, W and S move in and out.
+    const px = 520 * dt;
+    if (held.l) panOrbit( px, 0);
+    if (held.r) panOrbit(-px, 0);
+    if (held.pf) panOrbit(0,  px);
+    if (held.pb) panOrbit(0, -px);
+    if (held.tl) orbit.yaw -= 1.1 * dt;
+    if (held.tr) orbit.yaw += 1.1 * dt;
+    const zf = Math.pow(0.4, dt);
+    if (held.f) orbit.dist = Math.max(5,   orbit.dist * zf);
+    if (held.b) orbit.dist = Math.min(220, orbit.dist / zf);
+    if (held.up)   orbit.pitch = Math.min(1.5,  orbit.pitch + 0.9 * dt);
+    if (held.down) orbit.pitch = Math.max(0.12, orbit.pitch - 0.9 * dt);
   }
   renderer.render(scene, placeCam());
 }
+// A handle on the scene, so the build can be checked against the model.
+try {
+  Object.defineProperty(window, "__scene3", { get: () => scene, configurable: true });
+  Object.defineProperty(window, "__cam3",   { get: () => cam3,  configurable: true });
+  Object.defineProperty(window, "__orbit",  { get: () => orbit, configurable: true });
+} catch (e) {}
+
+let touches = new Map(), pinch = null;
 
 function bindGL(host) {
   let drag = null;
   const pt = e => e.touches ? e.touches[0] : e;
+  // Right button, middle button, or shift with the left: slide the view.
+  // Plain left drag still turns it.
+  const wantsPan = e => e.button === 1 || e.button === 2 || e.shiftKey;
+  host.addEventListener("contextmenu", e => { if (mode === "3d") e.preventDefault(); });
   host.addEventListener("pointerdown", e => {
-    drag = { x: e.clientX, y: e.clientY, moved: 0 };
+    drag = { x: e.clientX, y: e.clientY, moved: 0, pan: wantsPan(e),
+             id: e.pointerId };
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     host.setPointerCapture(e.pointerId);
   });
   host.addEventListener("pointermove", e => {
+    if (touches.has(e.pointerId))
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    // Two fingers: slide the view, and pinch to zoom.
+    if (touches.size >= 2 && mode === "3d") {
+      const [a, b] = [...touches.values()];
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+            gap = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinch) {
+        panOrbit(mid.x - pinch.x, mid.y - pinch.y);
+        if (pinch.gap > 0 && gap > 0)
+          orbit.dist = Math.max(5, Math.min(220,
+            orbit.dist * (pinch.gap / gap)));
+      }
+      pinch = { x: mid.x, y: mid.y, gap };
+      if (drag) drag.moved += 99;
+      return;
+    }
     if (!drag) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     drag.moved += Math.abs(dx) + Math.abs(dy);
@@ -1022,14 +1153,22 @@ function bindGL(host) {
       if (document.pointerLockElement) return;   // mousemove handles it
       walk.yaw -= dx * 0.005;
       walk.pitch = Math.max(-1.2, Math.min(1.2, walk.pitch - dy * 0.005));
+    } else if (drag.pan) {
+      panOrbit(dx, dy);
     } else {
       orbit.yaw += dx * 0.006;
       orbit.pitch = Math.max(0.12, Math.min(1.5, orbit.pitch + dy * 0.005));
     }
   });
+  const letGo = e => {
+    touches.delete(e.pointerId);
+    if (touches.size < 2) pinch = null;
+  };
+  host.addEventListener("pointercancel", letGo);
   host.addEventListener("pointerup", e => {
     const was = drag; drag = null;
-    if (!was || was.moved >= 6) return;
+    letGo(e);
+    if (!was || was.moved >= 6 || was.pan) return;
     // A tap in walk mode either grabs the mouse for looking, or picks a bed
     // once the mouse is already grabbed.
     if (mode === "walk" && !document.pointerLockElement) {
@@ -1077,24 +1216,36 @@ function bindGL(host) {
     ArrowUp:"f", ArrowDown:"b", ArrowLeft:"tl", ArrowRight:"tr",
     PageUp:"up", PageDown:"down"
   };
+  // In 3D the arrows slide the view instead of turning it, so they map to
+  // slots of their own.
+  const KEYMAP3D = Object.assign({}, KEYMAP, {
+    ArrowUp:"pf", ArrowDown:"pb", ArrowLeft:"l", ArrowRight:"r",
+    a:"l", A:"l", d:"r", D:"r"
+  });
   // Never steal a keystroke from a field someone is typing in.
   const typing = el => !!el && (el.tagName === "INPUT" || el.tagName === "SELECT" ||
                                 el.tagName === "TEXTAREA" || el.isContentEditable);
 
+  const mapFor = () => mode === "3d" ? KEYMAP3D : KEYMAP;
+
   addEventListener("keydown", e => {
-    if (mode !== "walk" || typing(e.target)) return;
+    if ((mode !== "walk" && mode !== "3d") || typing(e.target)) return;
     if (e.key === "Shift") { held.fast = true; return; }
-    if (e.key === "r" || e.key === "R") { walk.placed = false; homeWalk(); return; }
+    if (e.key === "r" || e.key === "R") {
+      if (mode === "3d") { orbit.framed = false; buildWorld(); }
+      else { walk.placed = false; homeWalk(); }
+      return;
+    }
     if (e.key === "Escape" && document.pointerLockElement) {
       document.exitPointerLock(); return;
     }
-    const m = KEYMAP[e.key];
+    const m = mapFor()[e.key];
     if (m) { held[m] = true; e.preventDefault(); }
   });
   addEventListener("keyup", e => {
     if (e.key === "Shift") { held.fast = false; return; }
-    const m = KEYMAP[e.key];
-    if (m) held[m] = false;
+    // Let go of the slot in both maps: the mode may have changed mid-press.
+    [KEYMAP[e.key], KEYMAP3D[e.key]].forEach(m => { if (m) held[m] = false; });
   });
   // Moving away from the page must not leave a key stuck down.
   addEventListener("blur", () => Object.keys(held).forEach(k => held[k] = false));
@@ -1153,7 +1304,8 @@ function setMode(m) {
   if (m !== "walk" && document.pointerLockElement) document.exitPointerLock();
   hint.textContent = m === "walk"
     ? "Click to look around · W A S D or arrows to move · R to go back to the start"
-    : "Drag to turn · scroll to zoom · tap a room or a bed";
+    : "Drag to turn · right-drag, shift-drag or arrows to slide · " +
+      "scroll to zoom · R to recentre · tap a room or a bed";
   if (!raf) loop();
 }
 
@@ -1662,7 +1814,7 @@ setInterval(() => {
 $("clock").textContent =
   new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
 
-console.log("floor.html build 2026-11-18-terms");
+console.log("floor.html build 2026-11-19-walls");
 watchDay();
 draw();
 </script>
